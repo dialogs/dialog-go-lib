@@ -31,7 +31,7 @@ func New(cfg *Config, ctx map[string]interface{}) (*Logger, error) {
 		}
 	}
 
-	logger, err := zapCfg.Build(zap.AddCallerSkip(3))
+	logger, err := zapCfg.Build(zap.AddCallerSkip(2))
 	if err != nil {
 		return nil, pkgerr.Wrap(err, "native logger")
 	}
