@@ -27,13 +27,13 @@ func TestAdminRouter(t *testing.T) {
 		BuildDate: "builddate",
 	})
 
-	service := service.NewHTTP(address, adminRouter, time.Second)
+	service := service.NewHTTP(adminRouter, time.Second)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, service.Serve())
+		require.Equal(t, http.ErrServerClosed, service.ListenAndServeAddr(address))
 	}()
 
 	for !service.Ready() {

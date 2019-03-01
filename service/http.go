@@ -9,44 +9,56 @@ import (
 // A HTTP service
 type HTTP struct {
 	*service
-	svr          *http.Server
+	handler      http.Handler
 	closeTimeout time.Duration
 }
 
 // NewHTTP create http service
-func NewHTTP(addr string, handler http.Handler, closeTimeout time.Duration) *HTTP {
+func NewHTTP(handler http.Handler, closeTimeout time.Duration) *HTTP {
 	return &HTTP{
-		service: newService(),
-		svr: &http.Server{
-			Addr:    addr,
-			Handler: handler,
-		},
+		service:      newService(),
+		handler:      handler,
 		closeTimeout: closeTimeout,
 	}
 }
 
-// Serve http
-func (s *HTTP) Serve() error {
+// ListenAndServeAddr listens on the TCP network address and
+// accepts incoming connections on the listener
+func (s *HTTP) ListenAndServeAddr(addr string) error {
+	s.SetAddr(addr)
+	return s.ListenAndServe()
+}
+
+// ListenAndServe listens on the TCP network address and
+// accepts incoming connections on the listener
+func (s *HTTP) ListenAndServe() error {
+
+	addr := s.GetAddr()
+	svr := http.Server{
+		Addr:    addr,
+		Handler: s.handler,
+	}
 
 	run := func(retval chan<- error) {
+
 		go func() {
 			// check service state
-			if err := PingConn(s.svr.Addr, serviceStartTimeout); err == nil {
+			if err := PingConn(addr, serviceStartTimeout); err == nil {
 				s.setReady(true)
 			} else {
 				s.Close()
 			}
 		}()
 
-		retval <- s.svr.ListenAndServe()
+		retval <- svr.ListenAndServe()
 	}
 
 	stop := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), s.closeTimeout)
 		defer cancel()
 
-		s.svr.Shutdown(ctx)
+		svr.Shutdown(ctx)
 	}
 
-	return s.serve("http service", s.svr.Addr, run, stop)
+	return s.serve("http service", addr, run, stop)
 }

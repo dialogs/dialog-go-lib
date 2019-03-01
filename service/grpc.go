@@ -10,15 +10,13 @@ import (
 // A GRPC service
 type GRPC struct {
 	*service
-	addr string
-	svr  *grpc.Server
+	svr *grpc.Server
 }
 
 // NewGRPC create grpc service
-func NewGRPC(addr string, opts ...grpc.ServerOption) *GRPC {
+func NewGRPC(opts ...grpc.ServerOption) *GRPC {
 	return &GRPC{
 		service: newService(),
-		addr:    addr,
 		svr:     grpc.NewServer(opts...),
 	}
 }
@@ -28,19 +26,29 @@ func (g *GRPC) RegisterService(fn func(svr *grpc.Server)) {
 	fn(g.svr)
 }
 
-// Serve grpc
-func (g *GRPC) Serve() error {
+// ListenAndServeAddr listens on the TCP network address and
+// accepts incoming connections on the listener
+func (g *GRPC) ListenAndServeAddr(addr string) error {
+	g.SetAddr(addr)
+	return g.ListenAndServe()
+}
+
+// ListenAndServe listens on the TCP network address and
+// accepts incoming connections on the listener
+func (g *GRPC) ListenAndServe() error {
+
+	addr := g.GetAddr()
 
 	run := func(retval chan<- error) {
 		go func() {
-			if err := PingGRPC(g.addr, serviceStartTimeout); err == nil {
+			if err := PingGRPC(addr, serviceStartTimeout); err == nil {
 				g.setReady(true)
 			} else {
 				g.Close()
 			}
 		}()
 
-		l, err := net.Listen("tcp", g.addr)
+		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			retval <- pkgerr.Wrap(err, "new grpc listener")
 			return
@@ -53,5 +61,5 @@ func (g *GRPC) Serve() error {
 		g.svr.GracefulStop()
 	}
 
-	return g.serve("grpc service", g.addr, run, stop)
+	return g.serve("grpc service", addr, run, stop)
 }

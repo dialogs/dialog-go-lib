@@ -19,6 +19,7 @@ const serviceStartTimeout = time.Second * 15
 type service struct {
 	interrupt chan os.Signal
 	ready     int32
+	addr      string
 }
 
 // create base service object
@@ -35,6 +36,16 @@ func (s *service) Close() (err error) {
 	s.interrupt <- os.Interrupt
 
 	return nil
+}
+
+// SetAddr set listener address
+func (s *service) SetAddr(val string) {
+	s.addr = val
+}
+
+// GetAddr returns listener address
+func (s *service) GetAddr() string {
+	return s.addr
 }
 
 // Ready returns true if service is available
