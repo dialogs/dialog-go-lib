@@ -27,23 +27,21 @@ func TestAdminRouter(t *testing.T) {
 		BuildDate: "builddate",
 	})
 
-	service := service.NewHTTP(adminRouter, time.Second)
+	svc := service.NewHTTP(adminRouter, time.Second)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, service.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
 	}()
-
-	for !service.Ready() {
-		// Wait
-	}
 
 	defer func() {
-		require.NoError(t, service.Close())
+		require.NoError(t, svc.Close())
 		wg.Wait()
 	}()
+
+	require.NoError(t, service.PingConn(address, 2, time.Second))
 
 	for _, testData := range []struct {
 		Name string

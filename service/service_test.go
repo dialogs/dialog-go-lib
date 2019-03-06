@@ -17,28 +17,28 @@ func TestGRPC(t *testing.T) {
 	h, p := tempAddress(t)
 	address := h + ":" + p
 
-	service := NewGRPC(grpc.WriteBufferSize(100))
+	svc := NewGRPC(grpc.WriteBufferSize(100))
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.NoError(t, service.ListenAndServeAddr(address))
+		require.NoError(t, svc.ListenAndServeAddr(address))
 	}()
 
-	for !service.Ready() {
-		// Wait
-	}
+	clientOptions := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithBlock(),
+		grpc.WithTimeout(time.Second)}
 
-	require.True(t, service.Ready())
-	require.NoError(t, PingGRPC(address, time.Second))
+	require.NoError(t, PingGRPC(address, 2, clientOptions...))
 
-	require.NoError(t, service.Close())
+	require.Equal(t, address, svc.GetAddr())
+	require.NoError(t, svc.Close())
 	wg.Wait()
 
-	require.False(t, service.Ready())
 	require.EqualError(t,
-		PingGRPC(address, time.Microsecond),
+		PingGRPC(address, 1, clientOptions...),
 		"context deadline exceeded")
 }
 
@@ -58,19 +58,14 @@ func TestHTTP(t *testing.T) {
 		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
 	}()
 
-	for !svc.Ready() {
-		// Wait
-	}
+	require.NoError(t, PingConn(address, 2, time.Second))
 
-	require.True(t, svc.Ready())
-	require.NoError(t, PingConn(address, time.Second))
-
+	require.Equal(t, address, svc.GetAddr())
 	require.NoError(t, svc.Close())
 	wg.Wait()
 
-	require.False(t, svc.Ready())
 	require.EqualError(t,
-		PingConn(address, time.Microsecond),
+		PingConn(svc.GetAddr(), 1, time.Microsecond),
 		fmt.Sprintf("dial tcp %s: i/o timeout", address))
 }
 

@@ -4,7 +4,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync/atomic"
+	"sync"
 	"syscall"
 	"time"
 
@@ -13,13 +13,11 @@ import (
 	"google.golang.org/grpc"
 )
 
-const serviceStartTimeout = time.Second * 15
-
 // service base object
 type service struct {
 	interrupt chan os.Signal
-	ready     int32
 	addr      string
+	mu        sync.RWMutex
 }
 
 // create base service object
@@ -31,36 +29,26 @@ func newService() *service {
 
 // Close service (io.Closer implementation)
 func (s *service) Close() (err error) {
-
-	s.setReady(false)
 	s.interrupt <- os.Interrupt
-
 	return nil
 }
 
 // SetAddr set listener address
 func (s *service) SetAddr(val string) {
+
+	s.mu.Lock()
 	s.addr = val
+	s.mu.Unlock()
 }
 
 // GetAddr returns listener address
-func (s *service) GetAddr() string {
-	return s.addr
-}
+func (s *service) GetAddr() (addr string) {
 
-// Ready returns true if service is available
-func (s *service) Ready() bool {
-	return atomic.LoadInt32(&s.ready) > 0
-}
+	s.mu.RLock()
+	addr = s.addr
+	s.mu.RUnlock()
 
-func (s *service) setReady(ok bool) {
-
-	var val int32
-	if ok {
-		val = 1
-	}
-
-	atomic.StoreInt32(&s.ready, val)
+	return
 }
 
 func (s *service) serve(name, addr string, run func(retval chan<- error), stop func()) error {
@@ -95,28 +83,39 @@ func (s *service) serve(name, addr string, run func(retval chan<- error), stop f
 }
 
 // PingConn ping tcp connection
-func PingConn(addr string, timeout time.Duration) error {
+func PingConn(addr string, tries int, timeout time.Duration) (err error) {
 
-	conn, err := net.DialTimeout("tcp", addr, timeout)
-	if err != nil {
-		return err
+	for i := 0; i < tries; i++ {
+		var conn net.Conn
+		conn, err = net.DialTimeout("tcp", addr, timeout)
+		if err == nil {
+			defer conn.Close()
+			return
+		}
+
+		if isLast := i == tries-1; !isLast {
+			time.Sleep(time.Second)
+		}
 	}
-	defer conn.Close()
 
-	return nil
+	return
 }
 
 // PingGRPC ping grpc server
-func PingGRPC(addr string, timeout time.Duration) error {
+func PingGRPC(addr string, tries int, opts ...grpc.DialOption) (err error) {
 
-	conn, err := grpc.Dial(addr,
-		grpc.WithInsecure(),
-		grpc.WithBlock(),
-		grpc.WithTimeout(timeout))
-	if err != nil {
-		return err
+	for i := 0; i < tries; i++ {
+		var conn *grpc.ClientConn
+		conn, err = grpc.Dial(addr, opts...)
+		if err == nil {
+			defer conn.Close()
+			return
+		}
+
+		if isLast := i == tries-1; !isLast {
+			time.Sleep(time.Second)
+		}
 	}
-	defer conn.Close()
 
-	return nil
+	return
 }

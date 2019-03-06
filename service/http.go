@@ -40,16 +40,6 @@ func (s *HTTP) ListenAndServe() error {
 	}
 
 	run := func(retval chan<- error) {
-
-		go func() {
-			// check service state
-			if err := PingConn(addr, serviceStartTimeout); err == nil {
-				s.setReady(true)
-			} else {
-				s.Close()
-			}
-		}()
-
 		retval <- svr.ListenAndServe()
 	}
 

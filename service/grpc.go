@@ -40,13 +40,6 @@ func (g *GRPC) ListenAndServe() error {
 	addr := g.GetAddr()
 
 	run := func(retval chan<- error) {
-		go func() {
-			if err := PingGRPC(addr, serviceStartTimeout); err == nil {
-				g.setReady(true)
-			} else {
-				g.Close()
-			}
-		}()
 
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
