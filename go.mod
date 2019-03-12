@@ -8,7 +8,7 @@ require (
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.9.1
-	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
+	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2bc60bb26ad24e09734fdc2d9ec58
 	google.golang.org/grpc v1.19.0
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20190209200317-47dd539968c4eaea8454f9b13f85b7fbb78c789a
 )

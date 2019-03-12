@@ -62,6 +62,18 @@ func TestCert(t *testing.T) {
 		require.Equal(t, end, resCa.NotAfter)
 	}
 
+	{
+		const password = "123456"
+
+		p12, err := X509ToP12(derBytes, privateKey, password)
+		require.NoError(t, err)
+
+		tlsCert, err := P12ToTLS(p12, password)
+		require.NoError(t, err)
+		require.NotNil(t, tlsCert)
+		require.NotNil(t, tlsCert.Certificate)
+		require.NotNil(t, tlsCert.PrivateKey)
+	}
 }
 
 func TestGRPC(t *testing.T) {
