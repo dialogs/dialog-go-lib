@@ -1,8 +1,10 @@
 package cert
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -191,4 +193,25 @@ func PemToRsa(pemData []byte) (*rsa.PrivateKey, error) {
 	}
 
 	return rsaKey, nil
+}
+
+// P12ToTLS converts p12(pfx) to TLS certificate
+func P12ToTLS(p12 []byte, password string) (*tls.Certificate, error) {
+
+	blocks, err := pkcs12.ToPEM(p12, password)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "p12 to TLS: p12 to pem")
+	}
+
+	pemData := bytes.NewBuffer(nil)
+	for _, b := range blocks {
+		pemData.Write(pem.EncodeToMemory(b))
+	}
+
+	tlsKey, err := tls.X509KeyPair(pemData.Bytes(), pemData.Bytes())
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "p12 to TLS: failed to create TLS certificate")
+	}
+
+	return &tlsKey, nil
 }
