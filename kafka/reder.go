@@ -16,13 +16,13 @@ type IReader interface {
 }
 
 // NewReader create original kafka reader client
-func NewReader(topic string, config *Config) *kafkago.Reader {
+func NewReader(groupID, topic string, config *Config) *kafkago.Reader {
 
 	dialer := newDialer(config)
 	rConf := kafkago.ReaderConfig{
 		Brokers: config.Brokers,
 		Dialer:  dialer,
-		GroupID: config.GroupID,
+		GroupID: groupID,
 		Topic:   topic,
 	}
 

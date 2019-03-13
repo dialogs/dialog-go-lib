@@ -19,7 +19,6 @@ func TestKafka(t *testing.T) {
 		Brokers: []string{
 			"localhost:9092",
 		},
-		GroupID:   "kafkatest",
 		Timeout:   time.Second,
 		DualStack: true,
 	}
@@ -42,7 +41,7 @@ func TestKafka(t *testing.T) {
 	}))
 
 	var (
-		r IReader = NewReader(Topic, conf)
+		r IReader = NewReader("groupID", Topic, conf)
 		w IWriter = NewWriter(Topic, conf)
 	)
 
