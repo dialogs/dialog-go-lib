@@ -1,4 +1,4 @@
-package kafka
+package cert
 
 import (
 	"crypto/tls"
