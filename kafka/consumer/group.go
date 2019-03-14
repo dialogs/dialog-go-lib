@@ -117,6 +117,7 @@ func (g *Group) Stop() {
 }
 
 func (g *Group) getOffset(partition int) int64 {
+	//always expect not nil val
 	val, _ := g.offsets.Load(partition)
 
 	return val.(int64)
