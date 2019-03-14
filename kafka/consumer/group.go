@@ -11,7 +11,6 @@ import (
 var nopCommitFunc = func(ctx context.Context, partition int, offset int64) {}
 
 type GroupConfig struct {
-	GroupID      string
 	OnCommit     func(ctx context.Context, partition int, offset int64)
 	OnError      func(err error)
 	OnProcess    func(ctx context.Context, msg kafka.Message)
@@ -35,12 +34,11 @@ type Group struct {
 }
 
 func NewGroupConfig() *GroupConfig {
-	c := &GroupConfig{}
 
-	c.QueueSize = 10
-	c.WorkersCount = 10
-
-	return c
+	return &GroupConfig{
+		QueueSize:    10,
+		WorkersCount: 10,
+	}
 }
 
 func NewGroup(cfg *GroupConfig) *Group {
@@ -115,12 +113,17 @@ func (g *Group) Start() {
 func (g *Group) Stop() {
 	g.cancel()
 	g.wg.Wait()
+	g.reader.Close()
 }
 
 func (g *Group) getOffset(partition int) int64 {
 	val, _ := g.offsets.Load(partition)
 
 	return val.(int64)
+}
+
+func (g *Group) setOffset(partition int, offset int64) {
+	g.offsets.LoadOrStore(partition, offset)
 }
 
 func (g *Group) commitLoop() {
@@ -148,14 +151,10 @@ func (g *Group) commitLoop() {
 			heap.Push(h, msg)
 
 			// extract longest increasing subsequence starting from expected offset
-			for {
-				if h.Len() != 0 && (*h)[0].Offset == expectedOffset {
-					expectedOffset++
-					offsets[msg.Partition] = expectedOffset
-					targets = append(targets, heap.Pop(h).(kafka.Message))
-				} else {
-					break
-				}
+			for h.Len() != 0 && (*h)[0].Offset == expectedOffset {
+				expectedOffset++
+				offsets[msg.Partition] = expectedOffset
+				targets = append(targets, heap.Pop(h).(kafka.Message))
 			}
 			if len(targets) > 0 {
 				if err := g.reader.CommitMessages(g.ctx, targets...); err != nil {
@@ -220,8 +219,4 @@ func (g *Group) readNext() (kafka.Message, bool) {
 		g.onError(err)
 	}
 	return msg, true
-}
-
-func (g *Group) setOffset(partition int, offset int64) {
-	g.offsets.LoadOrStore(partition, offset)
 }
