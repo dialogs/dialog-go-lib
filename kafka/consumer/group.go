@@ -220,5 +220,8 @@ func (g *Group) readNext() (kafka.Message, bool) {
 
 		g.onError(err)
 	}
+
+	g.setOffset(msg.Partition, msg.Offset)
+
 	return msg, true
 }
