@@ -3,6 +3,7 @@ package consumer
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/segmentio/kafka-go"
@@ -41,29 +42,29 @@ func NewGroupConfig() *GroupConfig {
 	}
 }
 
-func NewGroup(cfg *GroupConfig) *Group {
+func NewGroup(cfg *GroupConfig) (*Group, error) {
 	if cfg.QueueSize == 0 {
-		panic("consumer group queue size is 0")
+		return nil, errors.New("consumer group queue size is 0")
 	}
 
 	if cfg.WorkersCount == 0 {
-		panic("consumer group queue size is 0")
+		return nil, errors.New("consumer group queue size is 0")
 	}
 
 	if cfg.OnError == nil {
-		panic("on error callback is nil")
+		return nil, errors.New("on error callback is nil")
 	}
 
 	if cfg.OnProcess == nil {
-		panic("on process callback is nil")
+		return nil, errors.New("on process callback is nil")
 	}
 
 	if cfg.Reader == nil {
-		panic("reader is nil")
+		return nil, errors.New("reader is nil")
 	}
 
 	if len(cfg.Reader.Config().GroupID) == 0 {
-		panic("reader group id is empty")
+		return nil, errors.New("reader group id is empty")
 	}
 
 	var onCommit func(ctx context.Context, partition int, offset int64)
@@ -84,7 +85,7 @@ func NewGroup(cfg *GroupConfig) *Group {
 		processQueue: make(chan kafka.Message, cfg.QueueSize),
 		reader:       cfg.Reader,
 		workersCount: cfg.WorkersCount,
-	}
+	}, nil
 }
 
 func (g *Group) Start() {
