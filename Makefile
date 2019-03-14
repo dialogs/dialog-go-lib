@@ -1,6 +1,6 @@
 .DEFAULT_GOAL=testall
 
-PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/' | grep -v '/todo/')
+PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/' | grep -v '/kafka')
 TEST_TARGETS:=$(foreach p,${PACKAGES_WITH_TESTS},test-$(p))
 TEST_OUT_DIR:=testout
 
@@ -10,8 +10,20 @@ mod:
 	rm -rf vendor
 	GO111MODULE=on go mod vendor
 
+.PHONY: mocks
+mocks: mod
+ifeq ($(shell command -v mockery 2> /dev/null),)
+	go get -u -v github.com/vektra/mockery/.../
+endif
+	$(eval $@_source := kafka)
+	$(eval $@_target := ${$@_source}/mocks)
+	rm -f $($@_target)/IReader.go
+	rm -f $($@_target)/IWriter.go
+	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target)
+	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
+
 .PHONY: testall
-testall: mod
+testall: mocks
 	rm -rf ${TEST_OUT_DIR}
 	mkdir -p -m 755 $(TEST_OUT_DIR)
 	$(MAKE) -j 5 $(TEST_TARGETS)
