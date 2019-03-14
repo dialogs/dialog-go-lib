@@ -30,8 +30,8 @@ type Group struct {
 	offsets      sync.Map
 	processQueue chan kafka.Message
 	reader       *kafka.Reader
-	wg           sync.WaitGroup
 	workersCount int
+	wg           sync.WaitGroup
 }
 
 func NewGroupConfig() *GroupConfig {
