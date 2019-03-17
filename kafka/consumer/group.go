@@ -9,10 +9,10 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-var nopCommitFunc = func(ctx context.Context, partition int, offset int64) {}
+var nopCommitFunc = func(ctx context.Context, partition int, offset int64, committed int) {}
 
 type GroupConfig struct {
-	OnCommit     func(ctx context.Context, partition int, offset int64)
+	OnCommit     func(ctx context.Context, partition int, offset int64, committed int)
 	OnError      func(err error)
 	OnProcess    func(ctx context.Context, msg kafka.Message)
 	QueueSize    int
@@ -24,7 +24,7 @@ type Group struct {
 	cancel       context.CancelFunc
 	ctx          context.Context
 	commitQueue  chan kafka.Message
-	onCommit     func(ctx context.Context, partition int, offset int64)
+	onCommit     func(ctx context.Context, partition int, offset int64, committed int)
 	onError      func(err error)
 	onProcess    func(ctx context.Context, msg kafka.Message)
 	offsets      sync.Map
@@ -67,7 +67,7 @@ func NewGroup(cfg *GroupConfig) (*Group, error) {
 		return nil, errors.New("reader group id is empty")
 	}
 
-	var onCommit func(ctx context.Context, partition int, offset int64)
+	var onCommit func(ctx context.Context, partition int, offset int64, committed int)
 	if cfg.OnCommit != nil {
 		onCommit = cfg.OnCommit
 	} else {
@@ -167,7 +167,7 @@ func (g *Group) commitLoop() {
 					continue
 				}
 
-				g.onCommit(g.ctx, msg.Partition, expectedOffset)
+				g.onCommit(g.ctx, msg.Partition, expectedOffset, len(targets))
 
 				targets = targets[:0]
 			}
