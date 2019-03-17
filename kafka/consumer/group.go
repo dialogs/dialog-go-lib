@@ -11,7 +11,7 @@ import (
 
 var nopCommitFunc = func(ctx context.Context, partition int, offset int64, committed int) {}
 
-type GroupConfig struct {
+type Config struct {
 	OnCommit     func(ctx context.Context, partition int, offset int64, committed int)
 	OnError      func(err error)
 	OnProcess    func(ctx context.Context, msg kafka.Message)
@@ -20,7 +20,7 @@ type GroupConfig struct {
 	WorkersCount int
 }
 
-type Group struct {
+type Consumer struct {
 	cancel       context.CancelFunc
 	ctx          context.Context
 	commitQueue  chan kafka.Message
@@ -34,15 +34,15 @@ type Group struct {
 	wg           sync.WaitGroup
 }
 
-func NewGroupConfig() *GroupConfig {
+func NewConfig() *Config {
 
-	return &GroupConfig{
+	return &Config{
 		QueueSize:    10,
 		WorkersCount: 10,
 	}
 }
 
-func NewGroup(cfg *GroupConfig) (*Group, error) {
+func New(cfg *Config) (*Consumer, error) {
 	if cfg.QueueSize == 0 {
 		return nil, errors.New("consumer group queue size is 0")
 	}
@@ -63,10 +63,6 @@ func NewGroup(cfg *GroupConfig) (*Group, error) {
 		return nil, errors.New("reader is nil")
 	}
 
-	if len(cfg.Reader.Config().GroupID) == 0 {
-		return nil, errors.New("reader group id is empty")
-	}
-
 	var onCommit func(ctx context.Context, partition int, offset int64, committed int)
 	if cfg.OnCommit != nil {
 		onCommit = cfg.OnCommit
@@ -76,7 +72,7 @@ func NewGroup(cfg *GroupConfig) (*Group, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Group{
+	return &Consumer{
 		cancel:       cancel,
 		ctx:          ctx,
 		commitQueue:  make(chan kafka.Message, cfg.QueueSize),
@@ -88,59 +84,59 @@ func NewGroup(cfg *GroupConfig) (*Group, error) {
 	}, nil
 }
 
-func (g *Group) Start() {
-	g.wg.Add(1)
+func (c *Consumer) Start() {
+	c.wg.Add(1)
 	go func() {
-		g.readLoop()
-		g.wg.Done()
+		c.readLoop()
+		c.wg.Done()
 	}()
 
-	g.wg.Add(1)
+	c.wg.Add(1)
 	go func() {
-		g.commitLoop()
-		g.wg.Done()
+		c.commitLoop()
+		c.wg.Done()
 	}()
 
-	g.wg.Add(g.workersCount)
-	for i := 0; i < g.workersCount; i++ {
+	c.wg.Add(c.workersCount)
+	for i := 0; i < c.workersCount; i++ {
 		go func() {
-			g.processLoop()
-			g.wg.Done()
+			c.processLoop()
+			c.wg.Done()
 		}()
 	}
 
 }
 
-func (g *Group) Stop() {
-	g.cancel()
-	g.wg.Wait()
-	g.reader.Close()
+func (c *Consumer) Stop() {
+	c.cancel()
+	c.wg.Wait()
+	c.reader.Close()
 }
 
-func (g *Group) getOffset(partition int) int64 {
+func (c *Consumer) getOffset(partition int) int64 {
 	//always expect not nil val
-	val, _ := g.offsets.Load(partition)
+	val, _ := c.offsets.Load(partition)
 
 	return val.(int64)
 }
 
-func (g *Group) setOffset(partition int, offset int64) {
-	g.offsets.LoadOrStore(partition, offset)
+func (c *Consumer) setOffset(partition int, offset int64) {
+	c.offsets.LoadOrStore(partition, offset)
 }
 
-func (g *Group) commitLoop() {
+func (c *Consumer) commitLoop() {
 	targets := make([]kafka.Message, 0)
 	partitions := make(map[int]*MessageHeap)
 	offsets := make(map[int]int64)
 
 	for {
 		select {
-		case <-g.ctx.Done():
+		case <-c.ctx.Done():
 			return
-		case msg := <-g.commitQueue:
+		case msg := <-c.commitQueue:
 			expectedOffset, ok := offsets[msg.Partition]
 			if !ok {
-				expectedOffset = g.getOffset(msg.Partition)
+				expectedOffset = c.getOffset(msg.Partition)
 				offsets[msg.Partition] = expectedOffset
 			}
 
@@ -159,15 +155,15 @@ func (g *Group) commitLoop() {
 				targets = append(targets, heap.Pop(h).(kafka.Message))
 			}
 			if len(targets) > 0 {
-				if err := g.reader.CommitMessages(g.ctx, targets...); err != nil {
+				if err := c.reader.CommitMessages(c.ctx, targets...); err != nil {
 					if err == context.Canceled {
 						return
 					}
-					g.onError(err)
+					c.onError(err)
 					continue
 				}
 
-				g.onCommit(g.ctx, msg.Partition, expectedOffset, len(targets))
+				c.onCommit(c.ctx, msg.Partition, expectedOffset, len(targets))
 
 				targets = targets[:0]
 			}
@@ -175,53 +171,53 @@ func (g *Group) commitLoop() {
 	}
 }
 
-func (g *Group) commitMessage(m kafka.Message) {
+func (c *Consumer) commitMessage(m kafka.Message) {
 	select {
-	case <-g.ctx.Done():
+	case <-c.ctx.Done():
 		return
-	case g.commitQueue <- m:
+	case c.commitQueue <- m:
 
 	}
 }
 
-func (g *Group) processLoop() {
+func (c *Consumer) processLoop() {
 	for {
 		select {
-		case <-g.ctx.Done():
+		case <-c.ctx.Done():
 			return
-		case msg := <-g.processQueue:
-			g.onProcess(g.ctx, msg)
-			g.commitMessage(msg)
+		case msg := <-c.processQueue:
+			c.onProcess(c.ctx, msg)
+			c.commitMessage(msg)
 		}
 	}
 }
 
-func (g *Group) readLoop() {
+func (c *Consumer) readLoop() {
 	for {
-		msg, ok := g.readNext()
+		msg, ok := c.readNext()
 		if !ok {
 			return
 		}
 
 		select {
-		case <-g.ctx.Done():
+		case <-c.ctx.Done():
 			return
-		case g.processQueue <- msg:
+		case c.processQueue <- msg:
 		}
 	}
 }
 
-func (g *Group) readNext() (kafka.Message, bool) {
-	msg, err := g.reader.FetchMessage(g.ctx)
+func (c *Consumer) readNext() (kafka.Message, bool) {
+	msg, err := c.reader.FetchMessage(c.ctx)
 	if err != nil {
 		if err == context.Canceled {
 			return kafka.Message{}, false
 		}
 
-		g.onError(err)
+		c.onError(err)
 	}
 
-	g.setOffset(msg.Partition, msg.Offset)
+	c.setOffset(msg.Partition, msg.Offset)
 
 	return msg, true
 }
