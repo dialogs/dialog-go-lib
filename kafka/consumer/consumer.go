@@ -82,7 +82,9 @@ func New(cfg *Config) (*Consumer, error) {
 		return nil, err
 	}
 
-	err = reader.SubscribeTopics(cfg.Topics, nil)
+	err = reader.SubscribeTopics(cfg.Topics, func(consumer *kafka.Consumer, event kafka.Event) error {
+		return consumer.Unassign()
+	})
 	if err != nil {
 		reader.Close()
 		return nil, err
