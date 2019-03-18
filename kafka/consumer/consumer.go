@@ -33,9 +33,14 @@ type Consumer struct {
 	poolTimeout  time.Duration
 	processQueue chan *kafka.Message
 	reader       *kafka.Consumer
-	rebalancer   chan kafka.TopicPartitions
+	rebalancer   chan *Partition
 	workersCount int
 	wg           sync.WaitGroup
+}
+
+type Partition struct {
+	num    int32
+	offset kafka.Offset
 }
 
 func NewConfig() *Config {
@@ -144,15 +149,18 @@ func (c *Consumer) commitLoop() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case ps := <-c.rebalancer:
-			if ps != nil {
-				for _, p := range ps {
-					offsets[p.Partition] = p.Offset
-				}
+		case partition := <-c.rebalancer:
+			if partition != nil {
+				offsets[partition.num] = partition.offset
+			} else {
+				offsets = make(map[int32]kafka.Offset)
 				partitions = make(map[int32]*MessageHeap)
 			}
 		case msg := <-c.commitQueue:
-			expectedOffset := offsets[msg.TopicPartition.Partition]
+			expectedOffset, ok := offsets[msg.TopicPartition.Partition]
+			if !ok {
+				continue
+			}
 
 			h, ok := partitions[msg.TopicPartition.Partition]
 			if !ok {
@@ -209,14 +217,6 @@ func (c *Consumer) eventLoop() {
 					c.onError(c.ctx, err)
 				}
 				offsets = make(map[int32]kafka.Offset)
-				for _, p := range e.Partitions {
-					offsets[p.Partition] = p.Offset
-				}
-				select {
-				case <-c.ctx.Done():
-					return
-				case c.rebalancer <- e.Partitions:
-				}
 			case kafka.RevokedPartitions:
 				err := c.reader.Unassign()
 				if err != nil {
@@ -229,6 +229,15 @@ func (c *Consumer) eventLoop() {
 				case c.rebalancer <- nil:
 				}
 			case *kafka.Message:
+				_, ok := offsets[e.TopicPartition.Partition]
+				if !ok {
+					select {
+					case <-c.ctx.Done():
+						return
+					case c.rebalancer <- &Partition{num: e.TopicPartition.Partition, offset: e.TopicPartition.Offset}:
+					}
+				}
+
 				select {
 				case <-c.ctx.Done():
 					return
