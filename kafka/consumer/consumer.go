@@ -27,15 +27,19 @@ type Consumer struct {
 	onCommit     func(ctx context.Context, partition int, offset int64, committed int)
 	onError      func(err error)
 	onProcess    func(ctx context.Context, msg kafka.Message)
-	offsets      sync.Map
 	processQueue chan kafka.Message
 	reader       *kafka.Reader
+	rebalancer   chan *Partition
 	workersCount int
 	wg           sync.WaitGroup
 }
 
-func NewConfig() *Config {
+type Partition struct {
+	number int
+	offset int64
+}
 
+func NewConfig() *Config {
 	return &Config{
 		QueueSize:    10,
 		WorkersCount: 10,
@@ -80,6 +84,7 @@ func New(cfg *Config) (*Consumer, error) {
 		onProcess:    cfg.OnProcess,
 		processQueue: make(chan kafka.Message, cfg.QueueSize),
 		reader:       cfg.Reader,
+		rebalancer:   make(chan *Partition),
 		workersCount: cfg.WorkersCount,
 	}, nil
 }
@@ -113,17 +118,6 @@ func (c *Consumer) Stop() {
 	c.reader.Close()
 }
 
-func (c *Consumer) getOffset(partition int) int64 {
-	//always expect not nil val
-	val, _ := c.offsets.Load(partition)
-
-	return val.(int64)
-}
-
-func (c *Consumer) setOffset(partition int, offset int64) {
-	c.offsets.LoadOrStore(partition, offset)
-}
-
 func (c *Consumer) commitLoop() {
 	targets := make([]kafka.Message, 0)
 	partitions := make(map[int]*MessageHeap)
@@ -133,12 +127,20 @@ func (c *Consumer) commitLoop() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case msg := <-c.commitQueue:
-			expectedOffset, ok := offsets[msg.Partition]
-			if !ok {
-				expectedOffset = c.getOffset(msg.Partition)
-				offsets[msg.Partition] = expectedOffset
+		case partition := <-c.rebalancer:
+			expectedOffset, ok := offsets[partition.number]
+			if ok {
+				h := partitions[partition.number]
+				for h.Len() != 0 && (*h)[0].Offset == expectedOffset {
+					expectedOffset++
+					heap.Pop(h)
+				}
 			}
+
+			offsets[partition.number] = partition.offset
+
+		case msg := <-c.commitQueue:
+			expectedOffset := offsets[msg.Partition]
 
 			h, ok := partitions[msg.Partition]
 			if !ok {
@@ -151,7 +153,6 @@ func (c *Consumer) commitLoop() {
 			// extract longest increasing subsequence starting from expected offset
 			for h.Len() != 0 && (*h)[0].Offset == expectedOffset {
 				expectedOffset++
-				offsets[msg.Partition] = expectedOffset
 				targets = append(targets, heap.Pop(h).(kafka.Message))
 			}
 			if len(targets) > 0 {
@@ -163,6 +164,8 @@ func (c *Consumer) commitLoop() {
 					continue
 				}
 
+				offsets[msg.Partition] = expectedOffset
+
 				c.onCommit(c.ctx, msg.Partition, expectedOffset, len(targets))
 
 				targets = targets[:0]
@@ -171,11 +174,11 @@ func (c *Consumer) commitLoop() {
 	}
 }
 
-func (c *Consumer) commitMessage(m kafka.Message) {
+func (c *Consumer) commitMessage(msg kafka.Message) {
 	select {
 	case <-c.ctx.Done():
 		return
-	case c.commitQueue <- m:
+	case c.commitQueue <- msg:
 
 	}
 }
@@ -193,10 +196,24 @@ func (c *Consumer) processLoop() {
 }
 
 func (c *Consumer) readLoop() {
+	offsets := make(map[int]int64)
+
 	for {
 		msg, ok := c.readNext()
 		if !ok {
 			return
+		}
+
+		offset, ok := offsets[msg.Partition]
+		if !ok || offset+1 < msg.Offset {
+			offsets[msg.Partition] = offset
+
+			select {
+			case <-c.ctx.Done():
+				return
+			case c.rebalancer <- &Partition{number: msg.Partition, offset: offset}:
+
+			}
 		}
 
 		select {
@@ -216,8 +233,6 @@ func (c *Consumer) readNext() (kafka.Message, bool) {
 
 		c.onError(err)
 	}
-
-	c.setOffset(msg.Partition, msg.Offset)
 
 	return msg, true
 }
