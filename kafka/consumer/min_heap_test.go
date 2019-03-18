@@ -25,7 +25,7 @@ func TestMinHeap(t *testing.T) {
 		if h.Len() == 0 {
 			break
 		}
-		curr := heap.Pop(h).(kafka.Message)
+		curr := heap.Pop(h).(*kafka.Message)
 		if curr.TopicPartition.Offset < min {
 			t.Fatalf("Heap invariant violation. Got %d < %d", curr.TopicPartition.Offset, min)
 		}
