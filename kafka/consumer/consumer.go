@@ -236,6 +236,7 @@ func (c *Consumer) eventLoop() {
 						return
 					case c.rebalancer <- &Partition{num: e.TopicPartition.Partition, offset: e.TopicPartition.Offset}:
 					}
+					offsets[e.TopicPartition.Partition] = e.TopicPartition.Offset
 				}
 
 				select {
