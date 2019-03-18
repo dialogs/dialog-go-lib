@@ -140,8 +140,8 @@ func (c *Consumer) Start() error {
 
 func (c *Consumer) Stop() {
 	c.cancel()
-	c.reader.Close()
 	c.wg.Wait()
+	c.reader.Close()
 }
 
 func (c *Consumer) commitLoop() {
@@ -282,6 +282,7 @@ func (c *Consumer) readNext() (*kafka.Message, bool) {
 				if typedErr.Code() == kafka.ErrTimedOut {
 					select {
 					case <-c.ctx.Done():
+						return nil, false
 					default:
 						continue
 					}
