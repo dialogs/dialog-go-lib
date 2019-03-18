@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"time"
 
@@ -34,14 +33,9 @@ type Consumer struct {
 	poolTimeout  time.Duration
 	processQueue chan *kafka.Message
 	reader       *kafka.Consumer
-	rebalancer   chan *Partition
+	rebalancer   chan kafka.TopicPartitions
 	workersCount int
 	wg           sync.WaitGroup
-}
-
-type Partition struct {
-	number int32
-	offset kafka.Offset
 }
 
 func NewConfig() *Config {
@@ -107,7 +101,7 @@ func New(cfg *Config) (*Consumer, error) {
 		poolTimeout:  cfg.PoolTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
 		reader:       reader,
-		rebalancer:   make(chan *Partition),
+		rebalancer:   make(chan kafka.TopicPartitions),
 		workersCount: cfg.WorkersCount,
 	}, nil
 }
@@ -116,12 +110,6 @@ func (c *Consumer) Start() {
 	c.wg.Add(1)
 	go func() {
 		c.eventLoop()
-		c.wg.Done()
-	}()
-
-	c.wg.Add(1)
-	go func() {
-		c.readLoop()
 		c.wg.Done()
 	}()
 
@@ -156,17 +144,13 @@ func (c *Consumer) commitLoop() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case partition := <-c.rebalancer:
-			_, ok := offsets[partition.number]
-			if ok {
-				h := partitions[partition.number]
-				for h.Len() != 0 {
-					heap.Pop(h)
+		case ps := <-c.rebalancer:
+			if ps != nil {
+				for _, p := range ps {
+					offsets[p.Partition] = p.Offset
 				}
+				partitions = make(map[int32]*MessageHeap)
 			}
-
-			offsets[partition.number] = partition.offset
-
 		case msg := <-c.commitQueue:
 			expectedOffset := offsets[msg.TopicPartition.Partition]
 
@@ -189,7 +173,7 @@ func (c *Consumer) commitLoop() {
 					if err == context.Canceled {
 						return
 					}
-					c.onError(err)
+					c.onError(c.ctx, err)
 					continue
 				}
 
@@ -211,6 +195,8 @@ func (c *Consumer) commitMessage(msg *kafka.Message) {
 }
 
 func (c *Consumer) eventLoop() {
+	var offsets map[int32]kafka.Offset
+
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -220,19 +206,36 @@ func (c *Consumer) eventLoop() {
 			case kafka.AssignedPartitions:
 				err := c.reader.Assign(e.Partitions)
 				if err != nil {
-					c.onError(err)
+					c.onError(c.ctx, err)
+				}
+				offsets = make(map[int32]kafka.Offset)
+				for _, p := range e.Partitions {
+					offsets[p.Partition] = p.Offset
+				}
+				select {
+				case <-c.ctx.Done():
+					return
+				case c.rebalancer <- e.Partitions:
 				}
 			case kafka.RevokedPartitions:
 				err := c.reader.Unassign()
 				if err != nil {
-					c.onError(err)
+					c.onError(c.ctx, err)
+				}
+				offsets = nil
+				select {
+				case <-c.ctx.Done():
+					return
+				case c.rebalancer <- nil:
 				}
 			case *kafka.Message:
-				if e.TopicPartition.Error != nil {
-					c.onError(e.TopicPartition.Error)
+				select {
+				case <-c.ctx.Done():
+					return
+				case c.processQueue <- e:
 				}
 			case kafka.Error:
-				c.onError(e)
+				c.onError(c.ctx, e)
 			}
 		}
 	}
@@ -247,58 +250,5 @@ func (c *Consumer) processLoop() {
 			c.onProcess(c.ctx, msg)
 			c.commitMessage(msg)
 		}
-	}
-}
-
-func (c *Consumer) readLoop() {
-	offsets := make(map[int32]kafka.Offset)
-
-	for {
-		msg, ok := c.readNext()
-		if !ok {
-			return
-		}
-
-		offset, ok := offsets[msg.TopicPartition.Partition]
-		if !ok || offset+1 != msg.TopicPartition.Offset {
-			offsets[msg.TopicPartition.Partition] = msg.TopicPartition.Offset
-
-			select {
-			case <-c.ctx.Done():
-				return
-			case c.rebalancer <- &Partition{number: msg.TopicPartition.Partition, offset: msg.TopicPartition.Offset}:
-
-			}
-		} else {
-			offsets[msg.TopicPartition.Partition]++
-		}
-
-		select {
-		case <-c.ctx.Done():
-			return
-		case c.processQueue <- msg:
-		}
-	}
-}
-
-func (c *Consumer) readNext() (*kafka.Message, bool) {
-	for {
-		msg, err := c.reader.ReadMessage(c.poolTimeout)
-		if err != nil {
-			if err == io.EOF {
-				return nil, false
-			}
-
-			switch typedErr := err.(type) {
-			case kafka.Error:
-				if typedErr.Code() == kafka.ErrTimedOut {
-					continue
-				}
-			}
-
-			c.onError(err)
-		}
-
-		return msg, true
 	}
 }
