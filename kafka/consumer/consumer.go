@@ -210,27 +210,29 @@ func (c *Consumer) commitMessage(msg *kafka.Message) {
 }
 
 func (c *Consumer) eventLoop() {
-	select {
-	case <-c.ctx.Done():
-		return
-	case ev := <-c.reader.Events():
-		switch e := ev.(type) {
-		case kafka.AssignedPartitions:
-			err := c.reader.Assign(e.Partitions)
-			if err != nil {
-				c.onError(err)
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case ev := <-c.reader.Events():
+			switch e := ev.(type) {
+			case kafka.AssignedPartitions:
+				err := c.reader.Assign(e.Partitions)
+				if err != nil {
+					c.onError(err)
+				}
+			case kafka.RevokedPartitions:
+				err := c.reader.Unassign()
+				if err != nil {
+					c.onError(err)
+				}
+			case *kafka.Message:
+				if e.TopicPartition.Error != nil {
+					c.onError(e.TopicPartition.Error)
+				}
+			case kafka.Error:
+				c.onError(e)
 			}
-		case kafka.RevokedPartitions:
-			err := c.reader.Unassign()
-			if err != nil {
-				c.onError(err)
-			}
-		case *kafka.Message:
-			if e.TopicPartition.Error != nil {
-				c.onError(e.TopicPartition.Error)
-			}
-		case kafka.Error:
-			c.onError(e)
 		}
 	}
 }
