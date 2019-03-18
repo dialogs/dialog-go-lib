@@ -214,6 +214,8 @@ func (c *Consumer) readLoop() {
 			case c.rebalancer <- &Partition{number: msg.Partition, offset: msg.Offset}:
 
 			}
+		} else {
+			offsets[msg.Partition]++
 		}
 
 		select {
