@@ -19,7 +19,8 @@ type Config struct {
 	OnProcess    func(ctx context.Context, msg *kafka.Message)
 	PoolTimeout  time.Duration
 	QueueSize    int
-	Reader       *kafka.Consumer
+	ReaderConfig *kafka.ConfigMap
+	Topics       []string
 	WorkersCount int
 }
 
@@ -68,8 +69,23 @@ func New(cfg *Config) (*Consumer, error) {
 		return nil, errors.New("on process callback is nil")
 	}
 
-	if cfg.Reader == nil {
-		return nil, errors.New("reader is nil")
+	if len(cfg.Topics) == 0 {
+		return nil, errors.New("topics is empty")
+	}
+
+	if cfg.ReaderConfig == nil {
+		return nil, errors.New("reader config is nil")
+	}
+
+	reader, err := kafka.NewConsumer(cfg.ReaderConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	err = reader.SubscribeTopics(cfg.Topics, nil)
+	if err != nil {
+		reader.Close()
+		return nil, err
 	}
 
 	var onCommit func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
@@ -89,7 +105,7 @@ func New(cfg *Config) (*Consumer, error) {
 		onProcess:    cfg.OnProcess,
 		poolTimeout:  cfg.PoolTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
-		reader:       cfg.Reader,
+		reader:       reader,
 		rebalancer:   make(chan *Partition),
 		workersCount: cfg.WorkersCount,
 	}, nil
