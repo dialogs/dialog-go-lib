@@ -136,8 +136,9 @@ func (c *Consumer) Start() {
 
 func (c *Consumer) Stop() {
 	c.cancel()
-	c.wg.Wait()
+	c.reader.Unsubscribe()
 	c.reader.Close()
+	c.wg.Wait()
 }
 
 func (c *Consumer) commitLoop() {
