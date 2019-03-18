@@ -106,7 +106,7 @@ func New(cfg *Config) (*Consumer, error) {
 		poolTimeout:  cfg.PoolTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
 		reader:       reader,
-		rebalancer:   make(chan kafka.TopicPartitions),
+		rebalancer:   make(chan *Partition),
 		workersCount: cfg.WorkersCount,
 	}, nil
 }
