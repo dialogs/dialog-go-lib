@@ -229,6 +229,9 @@ func (c *Consumer) eventLoop() {
 				case c.rebalancer <- nil:
 				}
 			case *kafka.Message:
+				if e.TopicPartition.Error != nil {
+					continue
+				}
 				_, ok := offsets[e.TopicPartition.Partition]
 				if !ok {
 					select {
