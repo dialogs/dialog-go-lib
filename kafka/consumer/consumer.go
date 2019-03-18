@@ -206,12 +206,12 @@ func (c *Consumer) readLoop() {
 
 		offset, ok := offsets[msg.Partition]
 		if !ok || offset+1 < msg.Offset {
-			offsets[msg.Partition] = offset
+			offsets[msg.Partition] = msg.Offset
 
 			select {
 			case <-c.ctx.Done():
 				return
-			case c.rebalancer <- &Partition{number: msg.Partition, offset: offset}:
+			case c.rebalancer <- &Partition{number: msg.Partition, offset: msg.Offset}:
 
 			}
 		}
