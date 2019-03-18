@@ -3,12 +3,12 @@ package consumer
 import (
 	"container/heap"
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/pkg/errors"
 )
 
 var nopCommitFunc = func(ctx context.Context, partition int32, offset kafka.Offset, committed int) {}
@@ -85,11 +85,16 @@ func New(cfg *Config) (*Consumer, error) {
 		onCommit = nopCommitFunc
 	}
 
+	err := cfg.ReaderConfig.SetKey("enable.auto.commit", false)
+	if err != nil {
+		return nil, errors.Wrap(err, "force set config enable.auto.commit to false failed")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	reader, err := kafka.NewConsumer(cfg.ReaderConfig)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "create reader failed")
 	}
 
 	return &Consumer{
@@ -112,7 +117,7 @@ func (c *Consumer) Start() error {
 	err := c.reader.SubscribeTopics(c.topics, c.rebalance)
 	if err != nil {
 		c.reader.Close()
-		return err
+		return errors.Wrap(err, "subscribe to topics failed")
 	}
 
 	c.wg.Add(1)
