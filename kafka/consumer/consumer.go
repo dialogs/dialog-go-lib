@@ -15,7 +15,7 @@ var nopCommitFunc = func(ctx context.Context, partition int32, offset kafka.Offs
 
 type Config struct {
 	OnCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
-	OnError      func(err error)
+	OnError      func(ctx context.Context, err error)
 	OnProcess    func(ctx context.Context, msg *kafka.Message)
 	PoolTimeout  time.Duration
 	QueueSize    int
@@ -29,7 +29,7 @@ type Consumer struct {
 	ctx          context.Context
 	commitQueue  chan *kafka.Message
 	onCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
-	onError      func(err error)
+	onError      func(ctx context.Context, err error)
 	onProcess    func(ctx context.Context, msg *kafka.Message)
 	poolTimeout  time.Duration
 	processQueue chan *kafka.Message
@@ -102,6 +102,7 @@ func New(cfg *Config) (*Consumer, error) {
 		ctx:          ctx,
 		commitQueue:  make(chan *kafka.Message, cfg.QueueSize),
 		onCommit:     onCommit,
+		onError:      cfg.OnError,
 		onProcess:    cfg.OnProcess,
 		poolTimeout:  cfg.PoolTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
