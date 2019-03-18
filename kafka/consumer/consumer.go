@@ -209,7 +209,7 @@ func (c *Consumer) readLoop() {
 		}
 
 		offset, ok := offsets[msg.TopicPartition.Partition]
-		if !ok || offset+1 < msg.TopicPartition.Offset {
+		if !ok || offset+1 != msg.TopicPartition.Offset {
 			offsets[msg.TopicPartition.Partition] = msg.TopicPartition.Offset
 
 			select {
