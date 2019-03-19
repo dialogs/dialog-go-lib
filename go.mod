@@ -3,6 +3,9 @@ module github.com/dialogs/dialog-go-lib
 go 1.12
 
 require (
+	github.com/confluentinc/confluent-kafka-go v0.11.6
+	github.com/golang/snappy v0.0.1 // indirect
+	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/segmentio/kafka-go v0.2.2
 	github.com/stretchr/testify v1.3.0
