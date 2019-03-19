@@ -34,7 +34,8 @@ type Consumer struct {
 	poolTimeout  time.Duration
 	processQueue chan *kafka.Message
 	reader       *kafka.Consumer
-	rebalancer   chan *Partition
+	partitioner  chan *Partition
+	rebalancer   chan struct{}
 	topics       []string
 	workersCount int
 	wg           sync.WaitGroup
@@ -106,8 +107,9 @@ func New(cfg *Config) (*Consumer, error) {
 		onProcess:    cfg.OnProcess,
 		poolTimeout:  cfg.PoolTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
+		partitioner:  make(chan *Partition),
 		reader:       reader,
-		rebalancer:   make(chan *Partition),
+		rebalancer:   make(chan struct{}),
 		topics:       cfg.Topics,
 		workersCount: cfg.WorkersCount,
 	}, nil
@@ -158,17 +160,15 @@ func (c *Consumer) commitLoop() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case partition := <-c.rebalancer:
-			_, ok := partitions[partition.num]
-			if ok {
-				partitions[partition.num] = new(MessageHeap)
-			}
-
+		case <-c.rebalancer:
+			partitions = make(map[int32]*MessageHeap)
+			offsets = make(map[int32]kafka.Offset)
+		case partition := <-c.partitioner:
 			offsets[partition.num] = partition.offset
 		case msg := <-c.commitQueue:
-			expectedOffset := offsets[msg.TopicPartition.Partition]
+			expectedOffset, ok := offsets[msg.TopicPartition.Partition]
 
-			if msg.TopicPartition.Offset < expectedOffset {
+			if !ok || msg.TopicPartition.Offset < expectedOffset {
 				continue
 			}
 
@@ -217,6 +217,12 @@ func (c *Consumer) rebalance(consumer *kafka.Consumer, event kafka.Event) error 
 			c.onError(c.ctx, err)
 			return err
 		}
+		select {
+		case c.rebalancer <- struct{}{}:
+
+		case <-c.ctx.Done():
+
+		}
 	case kafka.Error:
 		c.onError(c.ctx, e)
 	}
@@ -260,7 +266,7 @@ func (c *Consumer) readLoop() {
 			select {
 			case <-c.ctx.Done():
 				return
-			case c.rebalancer <- &Partition{num: msg.TopicPartition.Partition, offset: msg.TopicPartition.Offset}:
+			case c.partitioner <- &Partition{num: msg.TopicPartition.Partition, offset: msg.TopicPartition.Offset}:
 			}
 		} else {
 			offsets[msg.TopicPartition.Partition]++
