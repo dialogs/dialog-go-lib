@@ -17,9 +17,9 @@ type Config struct {
 	OnCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
 	OnError      func(ctx context.Context, err error)
 	OnProcess    func(ctx context.Context, msg *kafka.Message)
-	PoolTimeout  time.Duration
+	PollTimeout  time.Duration
 	QueueSize    int
-	ReaderConfig *kafka.ConfigMap
+	ConfigMap    *kafka.ConfigMap
 	Topics       []string
 	WorkersCount int
 }
@@ -31,7 +31,7 @@ type Consumer struct {
 	onCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
 	onError      func(ctx context.Context, err error)
 	onProcess    func(ctx context.Context, msg *kafka.Message)
-	poolTimeout  time.Duration
+	pollTimeout  time.Duration
 	processQueue chan *kafka.Message
 	reader       *kafka.Consumer
 	partitioner  chan *Partition
@@ -48,7 +48,7 @@ type Partition struct {
 
 func NewConfig() *Config {
 	return &Config{
-		PoolTimeout:  1 * time.Second,
+		PollTimeout:  1 * time.Second,
 		QueueSize:    10,
 		WorkersCount: 10,
 	}
@@ -75,7 +75,7 @@ func New(cfg *Config) (*Consumer, error) {
 		return nil, errors.New("topics is empty")
 	}
 
-	if cfg.ReaderConfig == nil {
+	if cfg.ConfigMap == nil {
 		return nil, errors.New("reader config is nil")
 	}
 
@@ -86,14 +86,14 @@ func New(cfg *Config) (*Consumer, error) {
 		onCommit = nopCommitFunc
 	}
 
-	err := cfg.ReaderConfig.SetKey("enable.auto.commit", false)
+	err := cfg.ConfigMap.SetKey("enable.auto.commit", false)
 	if err != nil {
 		return nil, errors.Wrap(err, "force set config enable.auto.commit to false failed")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	reader, err := kafka.NewConsumer(cfg.ReaderConfig)
+	reader, err := kafka.NewConsumer(cfg.ConfigMap)
 	if err != nil {
 		return nil, errors.Wrap(err, "create reader failed")
 	}
@@ -105,7 +105,7 @@ func New(cfg *Config) (*Consumer, error) {
 		onCommit:     onCommit,
 		onError:      cfg.OnError,
 		onProcess:    cfg.OnProcess,
-		poolTimeout:  cfg.PoolTimeout,
+		pollTimeout:  cfg.PollTimeout,
 		processQueue: make(chan *kafka.Message, cfg.QueueSize),
 		partitioner:  make(chan *Partition),
 		reader:       reader,
@@ -282,7 +282,7 @@ func (c *Consumer) readLoop() {
 
 func (c *Consumer) readNext() (*kafka.Message, bool) {
 	for {
-		msg, err := c.reader.ReadMessage(c.poolTimeout)
+		msg, err := c.reader.ReadMessage(c.pollTimeout)
 		if err != nil {
 			if err == io.EOF {
 				return nil, false
