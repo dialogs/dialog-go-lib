@@ -4,6 +4,8 @@ import (
 	"container/heap"
 	"context"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 var nopCommitFunc = func(ctx context.Context, partition int32, offset kafka.Offset, committed int) {}
 
 type Config struct {
+	Logger       Logger
 	OnCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
 	OnError      func(ctx context.Context, err error)
 	OnProcess    func(ctx context.Context, msg *kafka.Message)
@@ -28,6 +31,7 @@ type Consumer struct {
 	cancel       context.CancelFunc
 	ctx          context.Context
 	commitQueue  chan *kafka.Message
+	logger       Logger
 	onCommit     func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
 	onError      func(ctx context.Context, err error)
 	onProcess    func(ctx context.Context, msg *kafka.Message)
@@ -86,6 +90,13 @@ func New(cfg *Config) (*Consumer, error) {
 		onCommit = nopCommitFunc
 	}
 
+	var logger Logger
+	if cfg.Logger != nil {
+		logger = cfg.Logger
+	} else {
+		logger = new(NopLogger)
+	}
+
 	err := cfg.ConfigMap.SetKey("enable.auto.commit", false)
 	if err != nil {
 		return nil, errors.Wrap(err, "force set config enable.auto.commit to false failed")
@@ -102,6 +113,7 @@ func New(cfg *Config) (*Consumer, error) {
 		cancel:       cancel,
 		ctx:          ctx,
 		commitQueue:  make(chan *kafka.Message, cfg.QueueSize),
+		logger:       logger,
 		onCommit:     onCommit,
 		onError:      cfg.OnError,
 		onProcess:    cfg.OnProcess,
@@ -211,12 +223,19 @@ func (c *Consumer) rebalance(consumer *kafka.Consumer, event kafka.Event) error 
 			c.onError(c.ctx, err)
 			return err
 		}
+		var partitions []string
+		for _, p := range e.Partitions {
+			partitions = append(partitions, strconv.Itoa(int(p.Partition)))
+		}
+
+		c.logger.Infof("assigned partitions: %s", strings.Join(partitions, ","))
 	case kafka.RevokedPartitions:
 		err := c.reader.Unassign()
 		if err != nil {
 			c.onError(c.ctx, err)
 			return err
 		}
+		c.logger.Info("revoked partitions")
 		select {
 		case c.rebalancer <- struct{}{}:
 
