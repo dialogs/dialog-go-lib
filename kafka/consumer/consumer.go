@@ -319,6 +319,7 @@ func (c *Consumer) readNext() (*kafka.Message, bool) {
 				}
 			}
 			c.onError(c.ctx, err)
+			continue
 		}
 
 		return msg, true
