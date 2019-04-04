@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"testing"
@@ -30,20 +31,17 @@ func TestWorkers(t *testing.T) {
 
 	const (
 		CountThreads = 1000
-		CountTasks   = 100
+		CountTasks   = 1000
 	)
 
 	results := make(chan *TaskResult, CountTasks)
 
-	dispatcher := NewDispatcher(0)
-	dispatcher.Run()
-	defer func() {
-		require.False(t, dispatcher.getIsClosed())
-		dispatcher.Close()
-		require.True(t, dispatcher.getIsClosed())
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	require.Equal(t, runtime.NumCPU(), cap(dispatcher.workerPool))
+	dispatcher := NewDispatcher(0)
+	dispatcher.Run(ctx)
+
+	require.Equal(t, runtime.NumCPU(), dispatcher.countWorkers)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -73,7 +71,7 @@ func TestWorkers(t *testing.T) {
 					Results: results,
 				}
 
-				dispatcher.JobQueue <- task
+				dispatcher.Invoke(task)
 			}
 		}(threadIdx)
 	}
@@ -82,4 +80,7 @@ func TestWorkers(t *testing.T) {
 
 	results <- nil
 	require.Nil(t, <-results)
+
+	cancel()
+
 }

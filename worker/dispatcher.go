@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"runtime"
 )
 
@@ -8,12 +9,8 @@ import (
 
 // A Dispatcher of the workers list
 type Dispatcher struct {
-	state
-
-	JobQueue chan ITask
-
-	workerPool  chan chan ITask
-	workersList []*worker
+	jobQueue     chan ITask
+	countWorkers int
 }
 
 // NewDispatcher create new workers wispatcher
@@ -23,44 +20,46 @@ func NewDispatcher(countWorkers int) *Dispatcher {
 		countWorkers = runtime.NumCPU()
 	}
 
-	workerPool := make(chan chan ITask, countWorkers)
-	workersList := make([]*worker, countWorkers, countWorkers)
-	for i := 0; i < countWorkers; i++ {
-		workersList[i] = newWorker(i, workerPool)
-	}
-
 	return &Dispatcher{
-		workerPool:  workerPool,
-		workersList: workersList,
-		JobQueue:    make(chan ITask),
+		countWorkers: countWorkers,
+		jobQueue:     make(chan ITask),
 	}
+}
+
+// Invoke adds task to the queue
+func (d *Dispatcher) Invoke(task ITask) {
+	d.jobQueue <- task
 }
 
 // Run a tasks processor
-func (d *Dispatcher) Run() {
+func (d *Dispatcher) Run(ctx context.Context) {
 
-	d.setIsClosed(false)
+	workerPool := make(chan struct{}, d.countWorkers)
+	for i := 0; i < cap(workerPool); i++ {
+		workerPool <- struct{}{}
+	}
 
 	go func() {
-		defer func() {
-			for i := 0; i < len(d.workersList); i++ {
-				d.workersList[i].stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-workerPool:
+				select {
+				case <-ctx.Done():
+					return
+
+				case task := <-d.jobQueue:
+					go func() {
+						defer func() {
+							workerPool <- struct{}{}
+						}()
+
+						task.Invoke()
+					}()
+				}
 			}
-		}()
-
-		for i := 0; i < len(d.workersList); i++ {
-			d.workersList[i].start()
-		}
-
-		for !d.getIsClosed() {
-			jobChannel := <-d.workerPool
-			jobChannel <- (<-d.JobQueue)
 		}
 	}()
-}
-
-// Close stops a tasks processor
-func (d *Dispatcher) Close() error {
-	d.setIsClosed(true)
-	return nil
 }
