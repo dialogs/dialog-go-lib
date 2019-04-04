@@ -37,6 +37,11 @@ func (a *AdminRouter) HandleFunc(path string, handler http.HandlerFunc) {
 	a.mux.HandleFunc(path, handler)
 }
 
+// Handle registers the handler for the given pattern
+func (a *AdminRouter) Handle(path string, handler http.Handler) {
+	a.mux.Handle(path, handler)
+}
+
 // ServeHTTP dispatches the request (http.Handler implementation)
 func (a *AdminRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	a.mux.ServeHTTP(w, req)

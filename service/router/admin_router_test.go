@@ -19,14 +19,7 @@ func TestAdminRouter(t *testing.T) {
 	h, p := tempAddress(t)
 	address := h + ":" + p
 
-	adminRouter := NewAdminRouter(&info.Info{
-		Name:      "name",
-		Version:   "version",
-		Commit:    "commit",
-		GoVersion: "goversion",
-		BuildDate: "builddate",
-	})
-	adminRouter.HandleFunc("/custom", func(w http.ResponseWriter, req *http.Request) {
+	handleFunc := func(w http.ResponseWriter, req *http.Request) {
 
 		if req.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -34,7 +27,17 @@ func TestAdminRouter(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusOK)
+	}
+
+	adminRouter := NewAdminRouter(&info.Info{
+		Name:      "name",
+		Version:   "version",
+		Commit:    "commit",
+		GoVersion: "goversion",
+		BuildDate: "builddate",
 	})
+	adminRouter.HandleFunc("/custom", handleFunc)
+	adminRouter.Handle("/sub", http.HandlerFunc(handleFunc))
 
 	svc := service.NewHTTP(adminRouter, time.Second)
 
@@ -59,6 +62,7 @@ func TestAdminRouter(t *testing.T) {
 		{Name: "health", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/health") }},
 		{Name: "info", Fn: func(*testing.T) { testAdminRouterInfo(t, address) }},
 		{Name: "custom", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/custom") }},
+		{Name: "sub", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/sub") }},
 	} {
 		if !t.Run(testData.Name, testData.Fn) {
 			return
