@@ -26,6 +26,15 @@ func TestAdminRouter(t *testing.T) {
 		GoVersion: "goversion",
 		BuildDate: "builddate",
 	})
+	adminRouter.HandleFunc("/custom", func(w http.ResponseWriter, req *http.Request) {
+
+		if req.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
 
 	svc := service.NewHTTP(adminRouter, time.Second)
 
@@ -47,8 +56,9 @@ func TestAdminRouter(t *testing.T) {
 		Name string
 		Fn   func(t *testing.T)
 	}{
-		{Name: "health", Fn: func(*testing.T) { testAdminRouterHealth(t, address) }},
+		{Name: "health", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/health") }},
 		{Name: "info", Fn: func(*testing.T) { testAdminRouterInfo(t, address) }},
+		{Name: "custom", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/custom") }},
 	} {
 		if !t.Run(testData.Name, testData.Fn) {
 			return
@@ -56,9 +66,9 @@ func TestAdminRouter(t *testing.T) {
 	}
 }
 
-func testAdminRouterHealth(t *testing.T, address string) {
+func testAdminRouterHandlerWithEmptyBody(t *testing.T, address, path string) {
 
-	endpoint := "http://" + address + "/health"
+	endpoint := "http://" + address + path
 
 	// test: invalid method
 	testInvalidMethod(t, endpoint)

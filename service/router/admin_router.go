@@ -32,6 +32,11 @@ func (a *AdminRouter) Info() *info.Info {
 	return a.appinfo
 }
 
+// HandleFunc registers the handler function for the given pattern
+func (a *AdminRouter) HandleFunc(path string, handler http.HandlerFunc) {
+	a.mux.HandleFunc(path, handler)
+}
+
 // ServeHTTP dispatches the request (http.Handler implementation)
 func (a *AdminRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	a.mux.ServeHTTP(w, req)
