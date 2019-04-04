@@ -6,8 +6,8 @@ TEST_OUT_DIR:=testout
 
 .PHONY: mod
 mod:
-	GO111MODULE=on go mod download
 	rm -rf vendor
+	GO111MODULE=on go mod download
 	GO111MODULE=on go mod vendor
 
 .PHONY: mocks
