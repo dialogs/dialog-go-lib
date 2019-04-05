@@ -1,6 +1,8 @@
 package enum
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"testing"
 
@@ -15,14 +17,36 @@ const (
 	Val2    CustomEnum = 2
 )
 
-var customEnum = New().
+var customEnum = New("custom enum").
 	Add(Unknown, "unknown").
 	Add(Val1, "val1").
 	Add(Val2, "val2")
 
+func TestAdd(t *testing.T) {
+
+	testEnum := New("test enum").
+		Add(Val1, "val1").
+		Add(Val2, "val2")
+
+	add := func(val interface{}, str string) (err error) {
+		defer func() {
+			if e := recover(); e != nil {
+				err = errors.New(fmt.Sprint(e))
+			}
+		}()
+
+		testEnum.Add(val, str)
+		return
+	}
+
+	require.EqualError(t, add(Val1, "fatal"), "test enum: index already exists: '1'")
+	require.EqualError(t, add(Val2, "fatal"), "test enum: index already exists: '2'")
+	require.NoError(t, add(Unknown, "unknown"))
+}
+
 func TestStringKeys(t *testing.T) {
 
-	require.Equal(t, []string{}, New().StringKeys())
+	require.Equal(t, []string{}, New("tmp enum").StringKeys())
 
 	keys := customEnum.StringKeys()
 	sort.Strings(keys)

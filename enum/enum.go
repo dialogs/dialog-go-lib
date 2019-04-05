@@ -1,21 +1,35 @@
 package enum
 
+import "fmt"
+
 // Enum is object with relationships of enumerates and strings values
 type Enum struct {
+	name           string
 	mapIndexString map[interface{}]string
 	mapStringIndex map[string]interface{}
 }
 
 // New creates enumeration
-func New() *Enum {
+func New(name string) *Enum {
 	return &Enum{
+		name:           name,
 		mapIndexString: make(map[interface{}]string),
 		mapStringIndex: make(map[string]interface{}),
 	}
 }
 
-// Add new relationship of a enumeration and a string value
+// Name returns enumeration name
+func (e *Enum) Name() string {
+	return e.name
+}
+
+// Add new relationship of an enumeration and a string value
+// If an index already exists, Handle panics.
 func (e *Enum) Add(index interface{}, str string) *Enum {
+	if _, ok := e.GetByIndex(index); ok {
+		panic(fmt.Sprintf("%v: index already exists: '%v'", e.Name(), index))
+	}
+
 	e.mapIndexString[index] = str
 	e.mapStringIndex[str] = index
 	return e
