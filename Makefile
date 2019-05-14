@@ -10,8 +10,17 @@ mod:
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod vendor
 
+.PHONY: static
+static: mod
+ifeq ($(shell command -v esc 2> /dev/null),)
+	go get -u -v github.com/mjibson/esc
+endif
+	$(eval $@_target := github.com/dialogs/dialog-go-lib/db/migrations/test)
+	rm -f $($@_target)/static.go
+	go generate $($@_target)
+
 .PHONY: mocks
-mocks: mod
+mocks: static
 ifeq ($(shell command -v mockery 2> /dev/null),)
 	go get -u -v github.com/vektra/mockery/.../
 endif

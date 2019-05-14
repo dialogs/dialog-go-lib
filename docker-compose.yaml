@@ -25,3 +25,24 @@ services:
       KAFKA_CREATE_TOPICS: "TestKafka:1:1"
     depends_on:
       - zookeeper
+
+  postgres:
+    image: postgres:11
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=example
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=
+      - POSTGRES_INITDB_ARGS=--data-checksums
+
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - "5433:80"
+    environment:
+      - "PGADMIN_DEFAULT_EMAIL=user"
+      - "PGADMIN_DEFAULT_PASSWORD=123"
+    depends_on:
+      - postgres
