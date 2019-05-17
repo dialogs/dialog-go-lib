@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -21,12 +22,33 @@ type Migrate migrate.Migrate
 // NewMigrate create a new migration driver
 func NewMigrate(fs http.FileSystem, dirName, dbURL string, getAssets FilesList) (*Migrate, error) {
 
-	d, err := NewAssetsDriver(fs, dirName, getAssets)
+	assetsDriver, err := NewAssetsDriver(fs, dirName, getAssets)
 	if err != nil {
 		return nil, pkgerr.Wrap(err, "new assets driver")
 	}
 
-	m, err := migrate.NewWithSourceInstance("go-bindata", d, dbURL)
+	m, err := migrate.NewWithSourceInstance("go-bindata", assetsDriver, dbURL)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "new migrator")
+	}
+
+	return (*Migrate)(m), nil
+}
+
+// NewMigrateWithConn create a new migration driver by existing database connection
+func NewMigrateWithConn(fs http.FileSystem, dirName string, db *sql.DB, getAssets FilesList) (*Migrate, error) {
+
+	assetsDriver, err := NewAssetsDriver(fs, dirName, getAssets)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "new assets driver")
+	}
+
+	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "new database driver")
+	}
+
+	m, err := migrate.NewWithInstance("go-bindata", assetsDriver, "postgres", dbDriver)
 	if err != nil {
 		return nil, pkgerr.Wrap(err, "new migrator")
 	}
