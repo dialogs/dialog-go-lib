@@ -51,7 +51,7 @@ func (s *service) GetAddr() (addr string) {
 	return
 }
 
-func (s *service) serve(name, addr string, run func(retval chan<- error), stop func()) error {
+func (s *service) serve(name, addr string, run func(retval chan<- error), stop func(*logger.Logger)) error {
 
 	l, err := logger.New(&logger.Config{}, map[string]interface{}{
 		name: addr,
@@ -76,7 +76,7 @@ func (s *service) serve(name, addr string, run func(retval chan<- error), stop f
 	}
 
 	l.Info("The service is shutting down...")
-	stop()
+	stop(l)
 	l.Info("The service is done")
 
 	return <-retval

@@ -106,6 +106,7 @@ func New(cfg *Config) (*Consumer, error) {
 
 	reader, err := kafka.NewConsumer(cfg.ConfigMap)
 	if err != nil {
+		defer cancel()
 		return nil, errors.Wrap(err, "create reader failed")
 	}
 

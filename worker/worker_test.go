@@ -30,8 +30,8 @@ func (t *Task) Invoke() {
 func TestWorkers(t *testing.T) {
 
 	const (
-		CountThreads = 1000
-		CountTasks   = 1000
+		CountThreads = 100
+		CountTasks   = 100
 	)
 
 	results := make(chan *TaskResult, CountTasks)

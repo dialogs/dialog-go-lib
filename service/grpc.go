@@ -3,6 +3,7 @@ package service
 import (
 	"net"
 
+	"github.com/dialogs/dialog-go-lib/logger"
 	pkgerr "github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
@@ -50,7 +51,7 @@ func (g *GRPC) ListenAndServe() error {
 		retval <- g.svr.Serve(l)
 	}
 
-	stop := func() {
+	stop := func(*logger.Logger) {
 		g.svr.GracefulStop()
 	}
 

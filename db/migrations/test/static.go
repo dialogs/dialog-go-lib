@@ -213,7 +213,7 @@ var _escData = map[string]*_escFile{
 		name:    "1_example.down.sql",
 		local:   "assets/1_example.down.sql",
 		size:    19,
-		modtime: 1557818931,
+		modtime: 1557907280,
 		compressed: `
 H4sIAAAAAAAA/wATAOz/RFJPUCBUQUJMRSBleGFtcGxlOwEAAP//o5Tr9hMAAAA=
 `,
@@ -223,7 +223,7 @@ H4sIAAAAAAAA/wATAOz/RFJPUCBUQUJMRSBleGFtcGxlOwEAAP//o5Tr9hMAAAA=
 		name:    "1_example.up.sql",
 		local:   "assets/1_example.up.sql",
 		size:    90,
-		modtime: 1557824460,
+		modtime: 1557907280,
 		compressed: `
 H4sIAAAAAAAA/wBaAKX/Q1JFQVRFIFRBQkxFIGV4YW1wbGUKKAogICAgaWQgdXVpZCBOT1QgTlVMTCBQ
 UklNQVJZIEtFWSwKICAgIHZhbHVlIHZhcmNoYXIoMSkgTk9UIE5VTEwKKTsKAQAA///MKen1WgAAAA==

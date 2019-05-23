@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/dialogs/dialog-go-lib/logger"
 )
 
 // A HTTP service
@@ -43,11 +45,13 @@ func (s *HTTP) ListenAndServe() error {
 		retval <- svr.ListenAndServe()
 	}
 
-	stop := func() {
+	stop := func(l *logger.Logger) {
 		ctx, cancel := context.WithTimeout(context.Background(), s.closeTimeout)
 		defer cancel()
 
-		svr.Shutdown(ctx)
+		if err := svr.Shutdown(ctx); err != nil {
+			l.Error("failed to shutdown:", err)
+		}
 	}
 
 	return s.serve("http service", addr, run, stop)
