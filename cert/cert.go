@@ -43,7 +43,7 @@ func NewAttrs(cn, email string, ou, dn []string) []pkix.AttributeTypeAndValue {
 	if email != "" {
 		list = append(list, pkix.AttributeTypeAndValue{
 			Type:  oidEmail,
-			Value: cn,
+			Value: email,
 		})
 	}
 
