@@ -31,6 +31,22 @@ endif
 	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target)
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
 
+.PHONY: proto
+proto:
+	$(eval $@_source := service/test)
+	$(eval $@_target := service/test)
+
+	rm -f ${$@_target}/*.pb.go
+
+	protoc \
+    -I=${$@_source} \
+    -I=vendor/ \
+    --gogofaster_out=\
+plugins=grpc,\
+Mgoogle/protobuf/empty.proto=github.com/gogo/protobuf/types,\
+:${$@_target} \
+${$@_source}/*.proto
+
 .PHONY: lint
 lint: mocks
 ifeq ($(shell command -v golangci-lint 2> /dev/null),)

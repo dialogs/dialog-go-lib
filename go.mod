@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/confluentinc/confluent-kafka-go v0.11.6
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/golang-migrate/migrate/v4 v4.3.1
 	github.com/lib/pq v1.0.0
