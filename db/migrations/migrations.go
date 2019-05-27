@@ -12,7 +12,8 @@ import (
 func init() {
 	// Stub for call postgres.init()
 	// Fix error: 'database driver: unknown driver postgres (forgotten import?)'
-	if (&postgres.Postgres{}) != nil {
+	if (&postgres.Postgres{}) == nil {
+		panic("fatal")
 	}
 }
 

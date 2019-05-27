@@ -2,22 +2,37 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
+
+	"github.com/dialogs/dialog-go-lib/logger"
 )
 
 // A HTTP service
 type HTTP struct {
 	*service
-	handler      http.Handler
 	closeTimeout time.Duration
+
+	// use only once property
+	handler http.Handler
+	server  *http.Server
 }
 
-// NewHTTP create http service
+// NewHTTP creates a http service with the handler
 func NewHTTP(handler http.Handler, closeTimeout time.Duration) *HTTP {
 	return &HTTP{
 		service:      newService(),
 		handler:      handler,
+		closeTimeout: closeTimeout,
+	}
+}
+
+// NewHTTPWithServer creates a http service with a custom http server configuration
+func NewHTTPWithServer(server *http.Server, closeTimeout time.Duration) *HTTP {
+	return &HTTP{
+		service:      newService(),
+		server:       server,
 		closeTimeout: closeTimeout,
 	}
 }
@@ -34,20 +49,43 @@ func (s *HTTP) ListenAndServeAddr(addr string) error {
 func (s *HTTP) ListenAndServe() error {
 
 	addr := s.GetAddr()
-	svr := http.Server{
-		Addr:    addr,
-		Handler: s.handler,
+
+	var svr *http.Server
+	if s.server != nil {
+		svr = s.server
+		if addr != "" {
+			svr.Addr = addr
+		}
+
+	} else {
+		svr = &http.Server{
+			Addr:    addr,
+			Handler: s.handler,
+		}
+
 	}
 
 	run := func(retval chan<- error) {
-		retval <- svr.ListenAndServe()
+		if svr.Addr == "" {
+			retval <- errors.New("invalid server address")
+			return
+		}
+
+		if svr.TLSConfig != nil {
+			// use svr.TLSConfig.Certificates for certificates
+			retval <- svr.ListenAndServeTLS("", "")
+		} else {
+			retval <- svr.ListenAndServe()
+		}
 	}
 
-	stop := func() {
+	stop := func(l *logger.Logger) {
 		ctx, cancel := context.WithTimeout(context.Background(), s.closeTimeout)
 		defer cancel()
 
-		svr.Shutdown(ctx)
+		if err := svr.Shutdown(ctx); err != nil {
+			l.Error("failed to shutdown:", err)
+		}
 	}
 
 	return s.serve("http service", addr, run, stop)

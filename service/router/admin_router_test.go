@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 func TestAdminRouter(t *testing.T) {
 
 	h, p := tempAddress(t)
-	address := h + ":" + p
+	address := net.JoinHostPort(h, p)
 
 	handleFunc := func(w http.ResponseWriter, req *http.Request) {
 
@@ -53,7 +54,7 @@ func TestAdminRouter(t *testing.T) {
 		wg.Wait()
 	}()
 
-	require.NoError(t, service.PingConn(address, 2, time.Second))
+	require.NoError(t, service.PingConn(address, 2, time.Second, nil))
 
 	for _, testData := range []struct {
 		Name string
@@ -72,7 +73,11 @@ func TestAdminRouter(t *testing.T) {
 
 func testAdminRouterHandlerWithEmptyBody(t *testing.T, address, path string) {
 
-	endpoint := "http://" + address + path
+	endpoint := (&url.URL{
+		Scheme: "http",
+		Host:   address,
+		Path:   path,
+	}).String()
 
 	// test: invalid method
 	testInvalidMethod(t, endpoint)
@@ -93,7 +98,11 @@ func testAdminRouterHandlerWithEmptyBody(t *testing.T, address, path string) {
 
 func testAdminRouterInfo(t *testing.T, address string) {
 
-	endpoint := "http://" + address + "/info"
+	endpoint := (&url.URL{
+		Scheme: "http",
+		Host:   address,
+		Path:   "/info",
+	}).String()
 
 	// test: invalid method
 	testInvalidMethod(t, endpoint)

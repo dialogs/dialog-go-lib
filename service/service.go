@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/tls"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -29,7 +31,7 @@ func newService() *service {
 
 // Close service (io.Closer implementation)
 func (s *service) Close() (err error) {
-	s.interrupt <- os.Interrupt
+	close(s.interrupt)
 	return nil
 }
 
@@ -51,7 +53,7 @@ func (s *service) GetAddr() (addr string) {
 	return
 }
 
-func (s *service) serve(name, addr string, run func(retval chan<- error), stop func()) error {
+func (s *service) serve(name, addr string, run func(retval chan<- error), stop func(*logger.Logger)) error {
 
 	l, err := logger.New(&logger.Config{}, map[string]interface{}{
 		name: addr,
@@ -76,18 +78,23 @@ func (s *service) serve(name, addr string, run func(retval chan<- error), stop f
 	}
 
 	l.Info("The service is shutting down...")
-	stop()
+	stop(l)
 	l.Info("The service is done")
 
 	return <-retval
 }
 
 // PingConn ping tcp connection
-func PingConn(addr string, tries int, timeout time.Duration) (err error) {
+func PingConn(addr string, tries int, timeout time.Duration, tlsConf *tls.Config) (err error) {
 
 	for i := 0; i < tries; i++ {
-		var conn net.Conn
-		conn, err = net.DialTimeout("tcp", addr, timeout)
+		var conn io.Closer
+		if tlsConf != nil {
+			dialer := &net.Dialer{KeepAlive: timeout}
+			conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConf)
+		} else {
+			conn, err = net.DialTimeout("tcp", addr, timeout)
+		}
 		if err == nil {
 			defer conn.Close()
 			return

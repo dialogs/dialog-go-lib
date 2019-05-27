@@ -68,6 +68,6 @@ func (a *AdminRouter) info(w http.ResponseWriter, req *http.Request) {
 
 	err := json.NewEncoder(w).Encode(a.appinfo)
 	if err != nil {
-		w.Write([]byte("unknown"))
+		_, _ = w.Write([]byte("unknown"))
 	}
 }

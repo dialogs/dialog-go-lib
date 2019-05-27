@@ -4,10 +4,13 @@ go 1.12
 
 require (
 	github.com/confluentinc/confluent-kafka-go v0.11.6
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/golang-migrate/migrate/v4 v4.3.1
+	github.com/lib/pq v1.0.0
 	github.com/pkg/errors v0.8.1
 	github.com/segmentio/kafka-go v0.2.2
+	github.com/spf13/viper v1.3.2
 	github.com/stretchr/testify v1.3.0
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/multierr v1.1.0 // indirect

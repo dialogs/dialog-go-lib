@@ -33,12 +33,6 @@ func (b *buffer) Add(topic string, msg kafkago.Message) {
 	b.mu.Unlock()
 }
 
-func (b *buffer) setOffset(offset int64) {
-	b.mu.Lock()
-	b.offset = offset
-	b.mu.Unlock()
-}
-
 func (b *buffer) Get(topic string) *kafkago.Message {
 	// TODO: wait messages
 

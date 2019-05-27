@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package checker;
+option go_package = "test";
+
+import "google/protobuf/empty.proto";
+
+service Checker {
+  rpc Ping (google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
