@@ -12,7 +12,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -41,6 +43,9 @@ func TestGRPC(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		require.NoError(t, svc.ListenAndServeAddr(address))
+
+		// test: safe close
+		require.NoError(t, svc.Close())
 	}()
 
 	clientOptions := []grpc.DialOption{
@@ -51,7 +56,7 @@ func TestGRPC(t *testing.T) {
 	require.NoError(t, PingGRPC(address, 2, clientOptions...))
 
 	require.Equal(t, address, svc.GetAddr())
-	require.NoError(t, svc.Close())
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGINT))
 	wg.Wait()
 
 	require.EqualError(t,
@@ -73,17 +78,97 @@ func TestHTTP(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+
+		// test: safe close
+		require.NoError(t, svc.Close())
 	}()
 
 	require.NoError(t, PingConn(address, 2, time.Second, nil))
+
+	require.Equal(t, address, svc.GetAddr())
+	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
+	wg.Wait()
+
+	require.EqualError(t,
+		PingConn(svc.GetAddr(), 1, time.Microsecond, nil),
+		fmt.Sprintf("dial tcp %s: i/o timeout", address))
+}
+
+func TestHTTPCloseBeforeRun(t *testing.T) {
+
+	h, p := tempAddress(t)
+	address := net.JoinHostPort(h, p)
+
+	svc := NewHTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), time.Second)
+
+	require.NoError(t, svc.Close())
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+
+		// test: safe close
+		require.NoError(t, svc.Close())
+	}()
+
+	{
+		err := PingConn(address, 2, time.Second, nil)
+		require.NotNil(t, err)
+		eNet := err.(*net.OpError)
+		require.Equal(t, eNet.Op, "dial")
+		eSys := eNet.Err.(*os.SyscallError)
+		require.EqualError(t, eSys.Err, "connection refused")
+	}
+
+	require.Equal(t, address, svc.GetAddr())
+	require.NoError(t, svc.Close())
+	wg.Wait()
+
+	{
+		err := PingConn(svc.GetAddr(), 1, time.Microsecond, nil)
+		require.NotNil(t, err)
+		eNet := err.(*net.OpError)
+		require.Equal(t, eNet.Op, "dial")
+		require.EqualError(t, eNet.Err, "i/o timeout")
+	}
+}
+
+func TestGRPCCloseBeforeRun(t *testing.T) {
+
+	h, p := tempAddress(t)
+	address := net.JoinHostPort(h, p)
+
+	svc := NewGRPC(grpc.WriteBufferSize(100))
+	require.NoError(t, svc.Close())
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+
+		// test: safe close
+		require.NoError(t, svc.Close())
+	}()
+
+	clientOptions := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithBlock(),
+		grpc.WithTimeout(time.Second)}
+
+	require.Equal(t, context.DeadlineExceeded, PingGRPC(address, 2, clientOptions...))
 
 	require.Equal(t, address, svc.GetAddr())
 	require.NoError(t, svc.Close())
 	wg.Wait()
 
 	require.EqualError(t,
-		PingConn(svc.GetAddr(), 1, time.Microsecond, nil),
-		fmt.Sprintf("dial tcp %s: i/o timeout", address))
+		PingGRPC(address, 1, clientOptions...),
+		"context deadline exceeded")
 }
 
 func TestGRPCWithTLS(t *testing.T) {
@@ -105,12 +190,18 @@ func TestGRPCWithTLS(t *testing.T) {
 			test.RegisterCheckerServer(svr, test.NewCheckerImpl())
 		})
 
+		var wgClose sync.WaitGroup
 		go func() {
-			require.NoError(t, svc.ListenAndServeAddr(address))
+			defer wgClose.Done()
+
+			require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
 		}()
 
 		defer func() {
+			wgClose.Add(1)
+
 			require.NoError(t, svc.Close())
+			wgClose.Wait()
 		}()
 	}
 
@@ -185,12 +276,18 @@ func TestHTTPWithTLS(t *testing.T) {
 
 	svc := NewHTTPWithServer(svr, time.Second)
 
+	var wgClose sync.WaitGroup
 	go func() {
+		defer wgClose.Done()
+
 		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
 	}()
 
 	defer func() {
+		wgClose.Add(1)
+
 		require.NoError(t, svc.Close())
+		wgClose.Wait()
 	}()
 
 	for _, testInfo := range []struct {
