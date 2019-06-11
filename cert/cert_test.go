@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
+	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,10 +113,18 @@ func TestGRPC(t *testing.T) {
 	_, p := tempAddress(t)
 	address := host + ":" + p
 
+	wgClose := sync.WaitGroup{}
 	go func() {
-		require.NoError(t, grpcSvr.ListenAndServeAddr(address))
+		defer wgClose.Done()
+
+		require.Equal(t, http.ErrServerClosed, grpcSvr.ListenAndServeAddr(address))
 	}()
-	defer grpcSvr.Close()
+
+	defer func() {
+		wgClose.Add(1)
+		require.NoError(t, grpcSvr.Close())
+		wgClose.Wait()
+	}()
 
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(servCertPEMBlock)
