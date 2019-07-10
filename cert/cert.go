@@ -188,7 +188,7 @@ func PemToRsa(pemData []byte) (*rsa.PrivateKey, error) {
 	}
 
 	rsaKey, err := x509.ParsePKCS1PrivateKey(pemBlock.Bytes)
-	if pemBlock == nil {
+	if err != nil {
 		return nil, pkgerr.Wrap(err, "pem to rsa")
 	}
 
