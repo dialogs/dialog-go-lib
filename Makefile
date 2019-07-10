@@ -50,7 +50,7 @@ ${$@_source}/*.proto
 .PHONY: lint
 lint: mocks
 ifeq ($(shell command -v golangci-lint 2> /dev/null),)
-	GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.14.1
+	GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.17.0
 endif
 	golangci-lint run ./... --exclude "is deprecated"
 
