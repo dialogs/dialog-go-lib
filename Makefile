@@ -1,8 +1,11 @@
-.DEFAULT_GOAL=testall
+.DEFAULT_GOAL=all
 
 PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/' | grep -v '/kafka')
 TEST_TARGETS:=$(foreach p,${PACKAGES_WITH_TESTS},test-$(p))
 TEST_OUT_DIR:=testout
+
+.PHONY: all
+all: mod static mock proto lint testall
 
 .PHONY: mod
 mod:
@@ -11,24 +14,29 @@ mod:
 	GO111MODULE=on go mod vendor
 
 .PHONY: static
-static: mod
-ifeq ($(shell command -v esc 2> /dev/null),)
-	go get -u -v github.com/mjibson/esc
-endif
+static:
 	$(eval $@_target := github.com/dialogs/dialog-go-lib/db/migrations/test)
 	rm -f $($@_target)/static.go
+
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
+	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	go-tools-embedded:1.0.0 \
 	go generate $($@_target)
 
-.PHONY: mocks
-mocks: static
-ifeq ($(shell command -v mockery 2> /dev/null),)
-	go get -u -v github.com/vektra/mockery/.../
-endif
+.PHONY: mock
+mock:
 	$(eval $@_source := kafka)
 	$(eval $@_target := ${$@_source}/mocks)
+
 	rm -f $($@_target)/IReader.go
 	rm -f $($@_target)/IWriter.go
-	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target)
+
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
+	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	go-tools-mock:1.0.0 \
+	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
 
 .PHONY: proto
@@ -38,24 +46,28 @@ proto:
 
 	rm -f ${$@_target}/*.pb.go
 
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
+	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	go-tools-protoc:1.0.0 \
 	protoc \
-    -I=${$@_source} \
-    -I=vendor/ \
-    --gogofaster_out=\
-plugins=grpc,\
-Mgoogle/protobuf/empty.proto=github.com/gogo/protobuf/types,\
-:${$@_target} \
-${$@_source}/*.proto
+	-I=${$@_source} \
+	-I=vendor \
+	--gogofaster_out=plugins=grpc,\
+	Mgoogle/protobuf/empty.proto=github.com/gogo/protobuf/types,\
+	:${$@_target} \
+	${$@_source}/*.proto
 
 .PHONY: lint
-lint: mocks
-ifeq ($(shell command -v golangci-lint 2> /dev/null),)
-	GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.17.0
-endif
+lint:
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
+	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	go-tools-linter:1.0.0 \
 	golangci-lint run ./... --exclude "is deprecated"
 
 .PHONY: testall
-testall: lint
+testall:
 	rm -rf ${TEST_OUT_DIR}
 	mkdir -p -m 755 $(TEST_OUT_DIR)
 	$(MAKE) -j 5 $(TEST_TARGETS)
