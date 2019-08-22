@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"context"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -12,9 +11,9 @@ type Config struct {
 	ConfigMap            *kafka.ConfigMap
 	CommitOffsetCount    int
 	CommitOffsetDuration time.Duration
-	OnCommit             func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
-	OnError              func(ctx context.Context, err error)
-	OnProcess            func(ctx context.Context, msg *kafka.Message)
+	OnCommit             FuncOnCommit
+	OnError              FuncOnError
+	OnProcess            FuncOnProcess
 	Topics               []string
 }
 

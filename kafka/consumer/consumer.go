@@ -2,7 +2,7 @@ package consumer
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,10 +13,10 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, err error)
-type FuncOnProcess func(ctx context.Context, msg *kafka.Message)
-type FuncOnCommit func(ctx context.Context, partition int32, offset kafka.Offset, committed int)
+type FuncOnProcess func(ctx context.Context, msg *kafka.Message) error
+type FuncOnCommit func(ctx context.Context, topic string, partition int32, offset kafka.Offset)
 
-var nopCommitFunc = func(ctx context.Context, partition int32, offset kafka.Offset, committed int) {}
+var nopCommitFunc = func(ctx context.Context, topic string, partition int32, offset kafka.Offset) {}
 
 type Consumer struct {
 	id                   uuid.UUID
@@ -46,6 +46,11 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		onCommit = nopCommitFunc
 	}
 
+	id, err := uuid.NewUUID()
+	if err != nil {
+		return nil, err
+	}
+
 	requiredProps := kafka.ConfigMap{
 		// https://godoc.org/github.com/confluentinc/confluent-kafka-go/kafka#hdr-Consumer_events
 		"enable.auto.commit": false,
@@ -54,16 +59,14 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		"go.events.channel.size":   0, // don't use channel buffer
 		// https://godoc.org/github.com/confluentinc/confluent-kafka-go/kafka#NewConsumer
 		"go.application.rebalance.enable": true,
+		// https://docs.confluent.io/3.3.1/clients/librdkafka/CONFIGURATION_8md.html
+		"api.version.request": "true",
+		"client.id":           id.String(),
 	}
 	for k, v := range requiredProps {
 		if err := cfg.ConfigMap.SetKey(k, v); err != nil {
 			return nil, errors.Wrapf(err, "force set config %s to %v failed", k, v)
 		}
-	}
-
-	id, err := uuid.NewUUID()
-	if err != nil {
-		return nil, err
 	}
 
 	logger = logger.With(zap.String("consumer", id.String()))
@@ -104,34 +107,41 @@ func (c *Consumer) Start() error {
 		// ok
 	}
 
-	err := c.reader.SubscribeTopics(c.topics, nil)
-	if err != nil {
-		defer func() {
+	defer func() {
+		c.logger.Info("closing...")
+		// logs for issues:
+		// https://github.com/confluentinc/confluent-kafka-go/issues/65
+		// https://github.com/confluentinc/confluent-kafka-go/issues/189
+		defer c.logger.Info("success closed")
+
+		select {
+		case <-c.ctx.Done():
+			// nothing do
+		default:
 			if err := c.Stop(); err != nil {
 				c.logger.Error("failed to stop", zap.Error(err))
 			}
-		}()
+		}
+	}()
 
+	err := c.reader.SubscribeTopics(c.topics, nil)
+	if err != nil {
 		return errors.Wrap(err, "subscribe to topics failed")
 	}
 
 	c.wg.Add(1)
-	go func() {
-		defer func() {
-			if err := c.Stop(); err != nil {
-				c.logger.Error("failed to stop", zap.Error(err))
-			}
-		}()
+	defer c.wg.Done()
 
-		defer c.wg.Done()
-
-		c.listen()
-	}()
-
-	return nil
+	return c.listen()
 }
 
 func (c *Consumer) Stop() (err error) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			c.logger.Error("stop: panic:" + fmt.Sprintln(err))
+		}
+	}()
 
 	// protection for error: 'fatal error: unexpected signal during runtime execution'
 	var isClosed bool
@@ -146,23 +156,25 @@ func (c *Consumer) Stop() (err error) {
 	c.wg.Wait()
 
 	if !isClosed {
-		defer func() {
-			c.logger.Info("done")
-		}()
-
+		defer c.logger.Info("done")
 		err = c.reader.Close()
 	}
 
 	return
 }
 
-func (c *Consumer) listen() {
+func (c *Consumer) listen() error {
 
-	//consumerOffsetsTmp := newOffset() // TODO: remove!
+	c.logger.Info("start listener")
 
 	consumerOffsets := newOffset()
 	defer func() {
+		if err := recover(); err != nil {
+			c.logger.Error("listener: panic:" + fmt.Sprintln(err))
+		}
+
 		c.commitOffsets(consumerOffsets)
+		c.logger.Info("close listener")
 	}()
 
 	commitOffsetDuration := c.commitOffsetDuration
@@ -176,7 +188,7 @@ func (c *Consumer) listen() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			return
+			return nil
 
 		case <-offsetsTicker.C:
 			c.commitOffsets(consumerOffsets)
@@ -186,124 +198,133 @@ func (c *Consumer) listen() {
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
 				// consumer group rebalance event: assigned partition set
-				c.logger.Info("assigned", zap.String("partitions", topicPartitionsToString(e.Partitions)))
-				for _, p := range e.Partitions {
-					if p.Error != nil {
-						c.logger.Error("assigned", zap.Error(p.Error))
+
+				opLog := c.logger.With(zap.String("operation", "rebalance"), zap.Any("event", e))
+
+				if err := checkPartitions(e.Partitions); err != nil {
+					opLog.Error("failed to check assigned partitions", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
+				}
+
+				// Issue: https://github.com/confluentinc/confluent-kafka-go/issues/212
+				// All offsets in topics are equal -1001(unset).
+				// If assign the event with these invalid value, duplicate messages can appear.
+				// Fix: read committed offsets before assign new topics.
+				committedOffsets, err := c.reader.Committed(e.Partitions, 5000)
+				if err != nil {
+					opLog.Error("failed to read committed offsets", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
+				}
+
+				for i := range committedOffsets {
+					item := &committedOffsets[i]
+					if item.Offset >= 0 {
+						item.Offset++
 					}
 				}
 
-				err := c.reader.Assign(e.Partitions)
-				if err != nil {
-					c.logger.Error("assigned", zap.Error(err))
+				if err := c.reader.Assign(committedOffsets); err != nil {
+					opLog.Error("failed to set assigned", zap.Error(err))
 					c.onError(c.ctx, err)
-					return
+					return err
 				}
 
-				// committedOffsets, err := c.reader.Committed(e.Partitions, 5000)
-				// if err != nil {
-				// 	c.logger.Error("assigned", zap.Error(err))
-				// 	c.onError(c.ctx, err)
-				// 	return
-				// }
-				committedOffsets := e.Partitions
-
-				// c.commitOffsets(consumerOffsets)
-				consumerOffsets.Sync(committedOffsets...)
-				// consumerOffsetsTmp = newOffset()
-				// for i := range committedOffsets {
-				// 	if committedOffsets[i].Offset > 0 {
-				// 		consumerOffsetsTmp.Add(committedOffsets[i])
-				// 	}
-				// }
-				c.logger.Debug("===--------> offset", zap.Any("offsets info", committedOffsets), zap.Any("assigned data", e.Partitions))
+				opLog.Info("success")
 
 			case kafka.RevokedPartitions:
 				// consumer group rebalance event: revoked partition set
-				c.logger.Info("revoked", zap.String("partitions", topicPartitionsToString(e.Partitions)))
-				for _, p := range e.Partitions {
-					if p.Error != nil {
-						c.logger.Error("revoked", zap.Error(p.Error))
-					}
+
+				opLog := c.logger.With(zap.String("operation", "revoked"), zap.Any("event", e))
+
+				if err := checkPartitions(e.Partitions); err != nil {
+					opLog.Error("failed to check revoked partitions", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
 				}
 
 				err := c.reader.Unassign()
 				if err != nil {
+					opLog.Error("failed to unassign", zap.Error(err))
 					c.onError(c.ctx, err)
-					return
+					return err
 				}
 
-				// c.commitOffsets(consumerOffsets)
 				consumerOffsets.Sync(e.Partitions...)
-				//consumerOffsetsTmp.Sync(e.Partitions...)
-				log.Println("====> revoked:", e.Partitions)
+
+				opLog.Info("success")
 
 			case *kafka.Message:
-				if e.TopicPartition.Error != nil {
-					c.logger.Error("message", zap.Error(e.TopicPartition.Error))
+
+				opLog := c.logger.With(zap.String("operation", "message"), zap.Any("event", e))
+
+				if err := e.TopicPartition.Error; err != nil {
+					opLog.Error("failed to check", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
 				}
 
-				// off := consumerOffsetsTmp.GetOffset(e.TopicPartition.Topic, e.TopicPartition.Partition)
-				// if off > 0 && e.TopicPartition.Offset <= off {
-				// 	c.logger.Warn("skip message", zap.Any("topic", e.TopicPartition))
-				// 	continue // skip, already processed. TODO: fix that!
-				// }
-
-				c.onProcess(c.ctx, e)
+				if err := c.onProcess(c.ctx, e); err != nil {
+					opLog.Error("failed to process message", zap.Error(err))
+					return err
+				}
 
 				consumerOffsets.Add(e.TopicPartition)
 
 				if c.commitOffsetCount > 0 {
 					if consumerOffsets.Counter() >= c.commitOffsetCount {
-						log.Println("====> commit:", e.TopicPartition)
 						c.commitOffsets(consumerOffsets)
 					}
 				}
+
+				opLog.Debug("success")
 
 			case kafka.PartitionEOF:
 				// consumer reached end of partition
 				// Needs to be explicitly enabled by setting the `enable.partition.eof`
 				// configuration property to true.
-				if e.Error != nil {
-					if kafkaErr, ok := e.Error.(kafka.Error); !ok || kafkaErr.Code() != kafka.ErrPartitionEOF {
-						c.logger.Error("reached", zap.Error(e.Error))
+
+				opLog := c.logger.With(zap.String("operation", "partition EOF"), zap.Any("event", e))
+
+				if err := e.Error; err != nil {
+					if kafkaErr, ok := err.(kafka.Error); !ok || kafkaErr.Code() != kafka.ErrPartitionEOF {
+						opLog.Error("failed to check", zap.Error(err))
+						c.onError(c.ctx, err)
+						return err
 					}
 				}
 
-				var topic string
-				if e.Topic != nil {
-					topic = *e.Topic
-				}
-
-				c.logger.Info("reached",
-					zap.String("topic", topic),
-					zap.Int32("partition", e.Partition),
-					zap.Int64("offset", int64(e.Offset)))
+				opLog.Info("success")
 
 			case kafka.OffsetsCommitted:
 				// reports committed offsets
 				// https://godoc.org/github.com/confluentinc/confluent-kafka-go/kafka#hdr-Consumer_events
 				// Offset commit results (when `enable.auto.commit` is enabled)
 
-				if e.Error != nil {
-					c.logger.Error("committed offsets", zap.Error(e.Error))
+				opLog := c.logger.With(zap.String("operation", "committed offsets"), zap.Any("event", e))
+
+				if err := e.Error; err != nil {
+					opLog.Error("committed offsets", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
 				}
 
-				for _, p := range e.Offsets {
-					if p.Error != nil {
-						c.logger.Error("committed offsets", zap.Error(p.Error))
-					}
+				if err := checkPartitions(e.Offsets); err != nil {
+					opLog.Error("failed to check", zap.Error(err))
+					c.onError(c.ctx, err)
+					return err
 				}
 
-				c.logger.Info("committed", zap.String("partitions", topicPartitionsToString(e.Offsets)))
+				opLog.Info("success")
 
 			case kafka.Error:
 				// Errors should generally be considered as informational, the client will try to automatically recover
-				c.logger.Error("error", zap.Error(e))
+				c.logger.Error("error event", zap.Error(e))
 				c.onError(c.ctx, e)
 
 			default:
-				c.logger.Error("unknown event", zap.Any("data", e))
+				c.logger.Error("unknown event", zap.Any("payload", e))
 			}
 
 		}
@@ -312,25 +333,37 @@ func (c *Consumer) listen() {
 
 func (c *Consumer) commitOffsets(consumerOffsets *offset) {
 
-	for p := consumerOffsets.Get(); p != nil; p = consumerOffsets.Get() {
-		_, err := c.reader.CommitOffsets([]kafka.TopicPartition{*p})
-		if err != nil && err != context.Canceled {
-			c.logger.Error("failed to commit offset", zap.Any("data", p), zap.Error(err))
+	list := consumerOffsets.Get()
+	if len(list) > 0 {
+		opLog := c.logger.WithOptions(zap.AddCallerSkip(1)).With(
+			zap.String("operation", "commit offsets"),
+			zap.Any("event", list))
 
+		success, err := c.reader.CommitOffsets(list)
+		if err != nil {
+			opLog.Error("failed to commit", zap.Error(err))
 			c.onError(c.ctx, err)
-			continue
+			return
 		}
-		c.logger.Debug("success to commit offset", zap.Any("data", p))
 
-		// committedOffsets, err := c.reader.Committed([]kafka.TopicPartition{{
-		// 	Topic:     p.Topic,
-		// 	Partition: p.Partition,
-		// }}, 5000)
-		// if err == nil {
-		// 	c.logger.Debug("===>success to commit offset", zap.Any("data", committedOffsets))
-		// }
+		if err := checkPartitions(success); err != nil {
+			opLog.Error("failed to commit", zap.Error(err))
+			c.onError(c.ctx, err)
+			return
+		}
 
-		consumerOffsets.Remove(*p)
-		c.onCommit(c.ctx, p.Partition, p.Offset, 0)
+		opLog.Debug("success", zap.Any("result", success))
+
+		var topic string
+		for i := range success {
+			item := &success[i]
+			consumerOffsets.Remove(*item)
+
+			if item.Topic != nil {
+				topic = *item.Topic
+			}
+
+			c.onCommit(c.ctx, topic, item.Partition, item.Offset)
+		}
 	}
 }

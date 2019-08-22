@@ -104,6 +104,7 @@ func (o *offset) Remove(in kafka.TopicPartition) {
 	}
 
 	o.mu.Lock()
+
 	partitions, ok := o.topics[topic]
 	if ok {
 		delete(partitions, in.Partition)
@@ -113,39 +114,24 @@ func (o *offset) Remove(in kafka.TopicPartition) {
 
 		o.counter--
 	}
+
+	if len(o.topics) == 0 {
+		o.counter = 0
+	}
+
 	o.mu.Unlock()
 }
 
-func (o *offset) Get() *kafka.TopicPartition {
-	o.mu.Lock()
-	defer o.mu.Unlock()
+func (o *offset) Get() (retval []kafka.TopicPartition) {
 
+	o.mu.RLock()
 	for topic, partition := range o.topics {
 		for p, po := range partition {
-			return &kafka.TopicPartition{
+			retval = append(retval, kafka.TopicPartition{
 				Topic:     stringPointer(topic),
 				Partition: p,
 				Offset:    po,
-			}
-		}
-	}
-
-	return nil
-}
-
-func (o *offset) GetOffset(topicPtr *string, num int32) (retval kafka.Offset) {
-
-	retval = -1
-
-	var topic string
-	if topicPtr != nil {
-		topic = *topicPtr
-	}
-
-	o.mu.RLock()
-	if p, ok := o.topics[topic]; ok {
-		if val, ok := p[num]; ok {
-			retval = val
+			})
 		}
 	}
 	o.mu.RUnlock()
