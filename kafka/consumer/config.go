@@ -14,6 +14,8 @@ type Config struct {
 	OnCommit             FuncOnCommit
 	OnError              FuncOnError
 	OnProcess            FuncOnProcess
+	OnRevoke             FuncOnRevoke
+	OnRebalance          FuncOnRebalance
 	Topics               []string
 }
 

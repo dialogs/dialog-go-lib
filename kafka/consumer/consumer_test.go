@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,7 +75,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	c := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
 	go func() { require.NoError(t, c.Start()) }()
 	defer func() { require.NoError(t, c.Stop()) }()
 
@@ -110,7 +111,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
 	defer func() { require.NoError(t, c1.Stop()) }()
 
 	go func() { require.NoError(t, c1.Start()) }()
@@ -148,16 +149,17 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 
 func TestConsumerRebalance(t *testing.T) {
 
+	const CountPartitions = 3
 	var Topic = "test-rebalance-" + strconv.Itoa(int(time.Now().Unix()))
 
-	createTopic(t, Topic, 2, 1)
+	createTopic(t, Topic, CountPartitions, 1)
 	defer func() { removeTopic(t, Topic) }()
 
 	onError := func(_ context.Context, err error) {
 		require.NoError(t, err)
 	}
 
-	chMsg := make(chan *kafka.Message, 1)
+	chMsg := make(chan *kafka.Message)
 	onProcess := func(_ context.Context, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
@@ -172,18 +174,32 @@ func TestConsumerRebalance(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	chRebalance := make(chan int, 10)
+	onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+		require.NotNil(t, topics)
+		chRebalance <- len(topics)
+	}
+
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
 	defer func() { require.NoError(t, c1.Stop()) }()
 	go func() { require.NoError(t, c1.Start()) }()
 
-	c2 := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
 	defer func() { require.NoError(t, c2.Stop()) }()
 	go func() { require.NoError(t, c2.Start()) }()
 
-	time.Sleep(time.Second)
+	waitRebalance(chRebalance)
+
+	checkAssignmentBefore(t, c1, c2, CountPartitions)
+
 	require.NoError(t, c2.Stop())
 
-	time.Sleep(time.Second * 4) // wait rebalance
+	waitRebalance(chRebalance)
+
+	c1PartitionsAfter, err := c1.reader.Assignment()
+	require.NoError(t, err)
+	require.NotEmpty(t, c1PartitionsAfter)
+	require.Len(t, c1PartitionsAfter, CountPartitions)
 }
 
 func TestConsumerFailedSubscribe(t *testing.T) {
@@ -205,7 +221,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, "", nil, onError, onProcess, onCommit)
+	c1 := newConsumer(t, []string{""}, nil, onError, onProcess, onCommit, nil, nil)
 	defer func() { require.NoError(t, c1.Stop()) }()
 
 	require.EqualError(t, c1.Start(), "subscribe to topics failed: Local: Invalid argument or configuration")
@@ -213,9 +229,11 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 
 func TestConsumerRevokePartition(t *testing.T) {
 
+	const CountPartitions = 3
+
 	var Topic = "test-revoke-" + strconv.Itoa(int(time.Now().Unix()))
 
-	createTopic(t, Topic, 2, 1)
+	createTopic(t, Topic, CountPartitions, 1)
 	defer func() { removeTopic(t, Topic) }()
 
 	chErrors := make(chan error, 2)
@@ -236,118 +254,136 @@ func TestConsumerRevokePartition(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	chRebalance := make(chan int)
+	onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+		require.NotNil(t, topics)
+		chRebalance <- len(topics)
+	}
+
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
 	defer func() { require.NoError(t, c1.Stop()) }()
 
 	go func() { require.NoError(t, c1.Start()) }()
 
-	c2 := newConsumer(t, Topic, nil, onError, onProcess, onCommit)
+	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
 	defer func() { require.NoError(t, c2.Stop()) }()
 
 	go func() { require.NoError(t, c2.Start()) }()
 
-	time.Sleep(time.Second * 4) // wait rebalance
+	waitRebalance(chRebalance)
+
+	checkAssignmentBefore(t, c1, c2, CountPartitions)
 
 	removeTopic(t, Topic)
 
-	time.Sleep(time.Second * 4) // wait revoke
+	waitRebalance(chRebalance)
+
+	c1PartitionsAfter, err := c1.reader.Assignment()
+	require.NoError(t, err)
+
+	c2PartitionsAfter, err := c2.reader.Assignment()
+	require.NoError(t, err)
+
+	// WARN! Assignment return not empty partitions list
+	require.Len(t, append(c1PartitionsAfter, c2PartitionsAfter...), 1)
 }
 
-func TestConsumerCommitToMonoTopic(t *testing.T) {
+func TestConsumerCommit(t *testing.T) {
 
-	const CountMessages = 100
-	var Topic = "test-commit-mono-" + strconv.Itoa(int(time.Now().Unix()))
+	fnNewTopics := func(countTopic, countPartitions int) []string {
+		topicList := make([]string, 0, countTopic)
+		for i := 0; i < countTopic; i++ {
+			topic := fmt.Sprintf("test-commit-%d-%d-%d", i, countPartitions, int(time.Now().Unix()))
 
-	createTopic(t, Topic, 1, 1)
-	defer func() { removeTopic(t, Topic) }()
-
-	onError := func(_ context.Context, err error) {
-		zapLogger := newLogger(t)
-		zapLogger.Fatal("failed to invoke", zap.Error(err))
-	}
-
-	chMsg := make(chan *kafka.Message, CountMessages)
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
-		if msg == nil {
-			return errors.New("invalid message")
+			createTopic(t, topic, countPartitions, 1)
+			topicList = append(topicList, topic)
 		}
-		chMsg <- msg
-		return nil
+
+		return topicList
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
-		require.Equal(t, Topic, topic)
-		require.True(t, partition >= 0)
-		require.True(t, offset >= 0)
-	}
+	fnNewConsumer := func(topicList []string, countMessages int) (func() *Consumer, chan *kafka.Message, chan int) {
 
-	props := kafka.ConfigMap{}
+		props := kafka.ConfigMap{
+			// Enable generation of PartitionEOF when the
+			// end of a partition is reached.
+			"enable.partition.eof": true,
+		}
 
-	fnNewConsumer := func() *Consumer {
-		return newConsumer(t, Topic, props, onError, onProcess, onCommit)
-	}
+		onError := func(_ context.Context, err error) {
+			panic(err)
+		}
 
-	for _, turnOnRebalance := range []bool{true} {
-		for countConsumers := 1; countConsumers < 2; countConsumers++ {
-			if t.Failed() {
-				return
+		chMsg := make(chan *kafka.Message, countMessages)
+		onProcess := func(_ context.Context, msg *kafka.Message) error {
+			if msg == nil {
+				return errors.New("invalid message")
 			}
-
-			invokeCommitTest(t, turnOnRebalance, countConsumers, CountMessages, Topic, chMsg, fnNewConsumer)
+			chMsg <- msg
+			return nil
 		}
-	}
-}
 
-func TestConsumerCommitToTopicWithMultiParts(t *testing.T) {
-
-	const CountMessages = 151
-	var Topic = "test-commit-multiparts-" + strconv.Itoa(int(time.Now().Unix()))
-
-	createTopic(t, Topic, 5, 1)
-	defer func() { removeTopic(t, Topic) }()
-
-	onError := func(_ context.Context, err error) {
-		zapLogger := newLogger(t)
-		zapLogger.Fatal("failed to invoke", zap.Error(err))
-	}
-
-	chMsg := make(chan *kafka.Message, CountMessages)
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
-		if msg == nil {
-			return errors.New("invalid message")
+		onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+			require.Contains(t, topicList, topic)
+			require.True(t, partition >= 0)
+			require.True(t, offset >= 0)
 		}
-		chMsg <- msg
-		return nil
-	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
-		require.Equal(t, Topic, topic)
-		require.True(t, partition >= 0)
-		require.True(t, offset >= 0)
-	}
-
-	props := kafka.ConfigMap{
-		// Enable generation of PartitionEOF when the
-		// end of a partition is reached.
-		"enable.partition.eof": true,
-	}
-
-	fnNewConsumer := func() *Consumer {
-		return newConsumer(t, Topic, props, onError, onProcess, onCommit)
-	}
-
-	for _, turnOnRebalance := range []bool{false, true} {
-		for countConsumers := 1; countConsumers < 5; countConsumers++ {
-			if t.Failed() {
-				return
+		chRebalance := make(chan int, 10000000) // buffer: channel use only in a start of a test (waiting of consumers)
+		onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+			if len(topics) == 0 {
+				panic("empty topics list")
 			}
+			chRebalance <- len(topics)
+		}
 
-			invokeCommitTest(t, turnOnRebalance, countConsumers, CountMessages, Topic, chMsg, fnNewConsumer)
+		return func() *Consumer {
+				return newConsumer(t, topicList, props, onError, onProcess, onCommit, onRebalance, onRebalance)
+			},
+			chMsg,
+			chRebalance
+	}
+
+	for _, testInfo := range []struct {
+		Topics        int
+		Partitions    int
+		Consumers     int
+		Rebalance     bool
+		CountMessages int
+	}{
+		{Topics: 1, Partitions: 1, Consumers: 1, Rebalance: false, CountMessages: 30},
+		{Topics: 1, Partitions: 1, Consumers: 1, Rebalance: true, CountMessages: 30},
+		{Topics: 1, Partitions: 3, Consumers: 4, Rebalance: true, CountMessages: 30},
+		{Topics: 2, Partitions: 3, Consumers: 4, Rebalance: true, CountMessages: 11},
+		{Topics: 3, Partitions: 5, Consumers: 4, Rebalance: false, CountMessages: 30},
+		{Topics: 3, Partitions: 5, Consumers: 4, Rebalance: true, CountMessages: 151},
+	} {
+
+		name := fmt.Sprintf("topics: %d; partitions: %d; consumers: %d; rebalance: %v; messages: %d",
+			testInfo.Topics,
+			testInfo.Partitions,
+			testInfo.Consumers,
+			testInfo.Rebalance,
+			testInfo.CountMessages)
+
+		fn := func(*testing.T) {
+			topicList := fnNewTopics(testInfo.Topics, testInfo.Partitions)
+			defer func() { removeTopic(t, topicList...) }()
+
+			fnConsumer, chMsg, chRebalance := fnNewConsumer(topicList, testInfo.CountMessages)
+			defer close(chRebalance)
+			defer close(chMsg)
+
+			invokeCommitTest(t, testInfo.Rebalance, testInfo.Consumers, testInfo.CountMessages, topicList, chMsg, chRebalance, fnConsumer)
+		}
+
+		if !t.Run(name, fn) {
+			return
 		}
 	}
 }
 
-func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countMessages int, topic string, chMsg <-chan *kafka.Message, createConsumer func() *Consumer) {
+func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countMessages int, topicList []string, chMsg <-chan *kafka.Message, chRebalance <-chan int, createConsumer func() *Consumer) {
 	t.Helper()
 
 	testInfo := fmt.Sprintf("count consumers: %d, with rebalance: %v", countConsumers, turnOnRebalance)
@@ -368,66 +404,83 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 		consumersList = append(consumersList, c)
 	}
 
-	p := newProducer(t, topic)
-	defer p.Close()
+	waitRebalance(chRebalance)
 
-	go func() {
-		for i := 0; i < countMessages; i++ {
-			deliveryChan := make(chan kafka.Event)
-			require.NoError(t, p.Produce(
-				&kafka.Message{
-					TopicPartition: kafka.TopicPartition{
-						Topic:     &topic,
-						Partition: kafka.PartitionAny,
+	for _, topicName := range topicList {
+		go func(topic string) {
+			p := newProducer(t, topic)
+			defer p.Close()
+
+			for i := 0; i < countMessages; i++ {
+				deliveryChan := make(chan kafka.Event)
+				require.NoError(t, p.Produce(
+					&kafka.Message{
+						TopicPartition: kafka.TopicPartition{
+							Topic:     &topic,
+							Partition: kafka.PartitionAny,
+						},
+						Value: []byte(strconv.Itoa(i)),
 					},
-					Value: []byte(strconv.Itoa(i)),
-				},
-				deliveryChan),
-				testInfo)
+					deliveryChan),
+					testInfo)
 
-			event := <-deliveryChan
-			eventMessage, ok := event.(*kafka.Message)
-			require.True(t, ok, testInfo+" %#v", event)
-			require.NoError(t, eventMessage.TopicPartition.Error, testInfo+" %#v", event)
-		}
-	}()
+				event := <-deliveryChan
+				eventMessage, ok := event.(*kafka.Message)
+				require.True(t, ok, testInfo+" %#v", event)
+				require.NoError(t, eventMessage.TopicPartition.Error, testInfo+" %#v", event)
+			}
+		}(topicName)
+	}
 
 	var (
 		count, prevPercent int
-		inMessages         = make([]int, countMessages)
+		inMessages         = make(map[string][]int)
 	)
-	for i := 0; i < len(inMessages); i++ {
-		inMessages[i] = -1
+
+	for _, topic := range topicList {
+		value := make([]int, countMessages)
+		for i := 0; i < len(value); i++ {
+			value[i] = -1
+		}
+
+		inMessages[topic] = value
 	}
 
 	for msg := range chMsg {
 		msgID, err := strconv.Atoi(string(msg.Value))
 		require.NoError(t, err, testInfo)
-		if inMessages[msgID] > -1 {
-			zapLogger.Fatal("not unique value", zap.Int("index", msgID), zap.Int("value", inMessages[msgID]))
+
+		arr := inMessages[*msg.TopicPartition.Topic]
+		if arr[msgID] > -1 {
+			zapLogger.Fatal("not unique value", zap.Int("index", msgID), zap.Int("value", arr[msgID]))
 		}
-		inMessages[msgID] = msgID
+		arr[msgID] = msgID
 
 		count++
-		if count == countMessages {
+		if count == (countMessages * len(topicList)) {
 			break
 		}
 
 		percent := int(float64(count) / float64(countMessages) * 100)
 
 		if turnOnRebalance {
-			if prevPercent != percent && percent%10 == 1 {
+			if prevPercent != percent && percent%30 == 1 {
 				zapLogger.Info("stop consumer")
 				require.NoError(t, consumersList[0].Stop(), testInfo)
+
+				time.Sleep(time.Second * 4) // wait rebalance
 
 				zapLogger.Info("start consumer")
 				consumersList[0] = createConsumer()
 				go func() { require.NoError(t, consumersList[0].Start(), testInfo) }()
-				time.Sleep(time.Second) // wait rebalance
+
+				time.Sleep(time.Second * 4) // wait rebalance
 
 			} else if countConsumers > 1 && countMessages > 10 && count == countMessages-10 {
 				zapLogger.Info("stop consumer")
 				require.NoError(t, consumersList[0].Stop(), testInfo)
+
+				time.Sleep(time.Second * 4) // wait rebalance
 			}
 		}
 
@@ -441,12 +494,17 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 		// ok
 	}
 
-	for i := range inMessages {
-		require.Equal(t, i, inMessages[i], testInfo)
+	require.Equal(t, len(topicList), len(inMessages))
+	for _, topic := range topicList {
+		arr := inMessages[topic]
+		for i := range arr {
+			require.Equal(t, i, arr[i], testInfo)
+		}
 	}
 }
 
-func newConsumer(t *testing.T, topic string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit) *Consumer {
+func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance) *Consumer {
+	t.Helper()
 
 	zapLogger := newLogger(t)
 
@@ -454,7 +512,9 @@ func newConsumer(t *testing.T, topic string, props kafka.ConfigMap, onError Func
 		OnError:           onError,
 		OnProcess:         onProcess,
 		OnCommit:          onCommit,
-		Topics:            []string{topic},
+		OnRevoke:          onRevoke,
+		OnRebalance:       onRebalance,
+		Topics:            topicList,
 		CommitOffsetCount: 1,
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":           "group-id",
@@ -477,6 +537,7 @@ func newConsumer(t *testing.T, topic string, props kafka.ConfigMap, onError Func
 }
 
 func newProducer(t *testing.T, topic string) *kafka.Producer {
+	t.Helper()
 
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": getKafkaServers(),
@@ -487,6 +548,7 @@ func newProducer(t *testing.T, topic string) *kafka.Producer {
 }
 
 func newLogger(t *testing.T) *zap.Logger {
+	t.Helper()
 
 	zapCfg := zap.NewProductionConfig()
 	zapCfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
@@ -497,10 +559,11 @@ func newLogger(t *testing.T) *zap.Logger {
 	return zapLogger
 }
 
-func removeTopic(t *testing.T, topic string) {
+func removeTopic(t *testing.T, topic ...string) {
+	t.Helper()
 
 	c := newAdminClient(t)
-	results, err := c.DeleteTopics(context.Background(), []string{topic})
+	results, err := c.DeleteTopics(context.Background(), topic)
 	require.NoError(t, err)
 
 	for _, res := range results {
@@ -509,6 +572,7 @@ func removeTopic(t *testing.T, topic string) {
 }
 
 func createTopic(t *testing.T, topic string, numParts, replicationFactor int) {
+	t.Helper()
 
 	c := newAdminClient(t)
 
@@ -528,6 +592,7 @@ func createTopic(t *testing.T, topic string, numParts, replicationFactor int) {
 }
 
 func newAdminClient(t *testing.T) *kafka.AdminClient {
+	t.Helper()
 
 	c, err := kafka.NewAdminClient(&kafka.ConfigMap{
 		"bootstrap.servers": getKafkaServers(),
@@ -539,4 +604,43 @@ func newAdminClient(t *testing.T) *kafka.AdminClient {
 
 func getKafkaServers() string {
 	return "localhost:9092"
+}
+
+func checkAssignmentBefore(t *testing.T, c1, c2 *Consumer, countPartitions int) {
+	t.Helper()
+
+	c1PartitionsBefore, err := c1.reader.Assignment()
+	require.NoError(t, err)
+
+	c2PartitionsBefore, err := c2.reader.Assignment()
+	require.NoError(t, err)
+
+	require.NotContains(t, c1PartitionsBefore, c2PartitionsBefore)
+	require.NotContains(t, c2PartitionsBefore, c1PartitionsBefore)
+	require.Len(t, append(c1PartitionsBefore, c2PartitionsBefore...), countPartitions)
+}
+
+func waitRebalance(chRebalance <-chan int) {
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		total := 0
+
+		for {
+			select {
+			case <-time.After(time.Second * 5):
+				if total > 0 {
+					return
+				}
+			case count := <-chRebalance:
+				total += count
+			}
+		}
+	}()
+
+	wg.Wait()
 }

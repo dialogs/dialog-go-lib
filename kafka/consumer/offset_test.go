@@ -11,30 +11,30 @@ func TestOffsetAdd(t *testing.T) {
 
 	o := newOffset()
 
-	for i, offsetVal := range []kafka.Offset{2, 1} {
+	for _, offsetVal := range []kafka.Offset{2, 1} {
 		o.Add(kafka.TopicPartition{Topic: stringPointer("t1"), Partition: 1, Offset: offsetVal})
 		require.Equal(t,
-			map[string]map[int32]kafka.Offset{
-				"t1": map[int32]kafka.Offset{1: 2},
+			map[string]map[int32]*offsetEntry{
+				"t1": map[int32]*offsetEntry{1: &offsetEntry{Offset: 2, Count: 1}},
 			},
 			o.topics)
-		require.Equal(t, i+1, o.Counter())
+		require.Equal(t, 1, o.Counter())
 	}
 
 	counterBefore := o.Counter()
 	for i, offsetVal := range []kafka.Offset{1, 2, 3, 4, 5} {
 		o.Add(kafka.TopicPartition{Topic: stringPointer("t2"), Partition: 2, Offset: offsetVal})
 		require.Equal(t,
-			map[string]map[int32]kafka.Offset{
-				"t1": map[int32]kafka.Offset{1: 2},
-				"t2": map[int32]kafka.Offset{2: offsetVal},
+			map[string]map[int32]*offsetEntry{
+				"t1": map[int32]*offsetEntry{1: &offsetEntry{Offset: 2, Count: 1}},
+				"t2": map[int32]*offsetEntry{2: &offsetEntry{Offset: offsetVal, Count: i + 1}},
 			},
 			o.topics)
 		require.Equal(t, i+1+counterBefore, o.Counter())
 	}
 }
 
-func TestOffsetSync(t *testing.T) {
+func TestOffsetClear(t *testing.T) {
 
 	o := newOffset()
 	o.Add(
@@ -45,27 +45,13 @@ func TestOffsetSync(t *testing.T) {
 		kafka.TopicPartition{Topic: stringPointer("t3"), Partition: 1, Offset: 1},
 	)
 
-	counterBefore := o.Counter()
-	o.Sync(
-		kafka.TopicPartition{Topic: stringPointer("t1"), Partition: 1, Offset: 1},
-		kafka.TopicPartition{Topic: stringPointer("t2"), Partition: 0, Offset: 1},
-		kafka.TopicPartition{Topic: stringPointer("t2"), Partition: 1, Offset: 1},
-		kafka.TopicPartition{Topic: stringPointer("t5"), Partition: 2, Offset: 1},
-	)
+	require.Equal(t, 5, o.Counter())
 
-	require.Equal(t, counterBefore, o.Counter())
+	o.Clear()
+
+	require.Equal(t, 0, o.Counter())
 	require.Equal(t,
-		map[string]map[int32]kafka.Offset{
-			"t1": map[int32]kafka.Offset{1: 1},
-			"t2": map[int32]kafka.Offset{0: 1, 1: 1},
-		},
-		o.topics)
-
-	o.Sync()
-
-	require.Equal(t, counterBefore, o.Counter())
-	require.Equal(t,
-		map[string]map[int32]kafka.Offset{},
+		map[string]map[int32]*offsetEntry{},
 		o.topics)
 }
 
@@ -99,5 +85,5 @@ func TestOffsetGetRemove(t *testing.T) {
 	}
 
 	require.Equal(t, 0, o.Counter())
-	require.Equal(t, map[string]map[int32]kafka.Offset{}, o.topics)
+	require.Equal(t, map[string]map[int32]*offsetEntry{}, o.topics)
 }

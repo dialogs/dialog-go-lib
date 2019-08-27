@@ -15,8 +15,14 @@ import (
 type FuncOnError func(ctx context.Context, err error)
 type FuncOnProcess func(ctx context.Context, msg *kafka.Message) error
 type FuncOnCommit func(ctx context.Context, topic string, partition int32, offset kafka.Offset)
+type FuncOnRevoke func(ctx context.Context, topic []kafka.TopicPartition)
+type FuncOnRebalance func(ctx context.Context, topic []kafka.TopicPartition)
 
-var nopCommitFunc = func(ctx context.Context, topic string, partition int32, offset kafka.Offset) {}
+var (
+	nopCommitFunc      = func(ctx context.Context, topic string, partition int32, offset kafka.Offset) {}
+	nopOnRevokeFunc    = func(ctx context.Context, topic []kafka.TopicPartition) {}
+	nopOnRebalanceFunc = func(ctx context.Context, topic []kafka.TopicPartition) {}
+)
 
 type Consumer struct {
 	id                   uuid.UUID
@@ -28,9 +34,12 @@ type Consumer struct {
 	onCommit             FuncOnCommit
 	onError              FuncOnError
 	onProcess            FuncOnProcess
+	onRevoke             FuncOnRevoke
+	onRebalance          FuncOnRebalance
 	reader               *kafka.Consumer
 	topics               []string
 	wg                   sync.WaitGroup
+	mu                   sync.RWMutex
 }
 
 func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
@@ -39,11 +48,19 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		return nil, err
 	}
 
-	var onCommit FuncOnCommit
+	onCommit := nopCommitFunc
 	if cfg.OnCommit != nil {
 		onCommit = cfg.OnCommit
-	} else {
-		onCommit = nopCommitFunc
+	}
+
+	onRevoke := nopOnRevokeFunc
+	if cfg.OnRevoke != nil {
+		onRevoke = cfg.OnRevoke
+	}
+
+	onRebalance := nopOnRebalanceFunc
+	if cfg.OnRebalance != nil {
+		onRebalance = cfg.OnRebalance
 	}
 
 	id, err := uuid.NewUUID()
@@ -85,6 +102,8 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		ctxCancel:            ctxCancel,
 		logger:               logger,
 		onCommit:             onCommit,
+		onRevoke:             onRevoke,
+		onRebalance:          onRebalance,
 		onError:              cfg.OnError,
 		onProcess:            cfg.OnProcess,
 		reader:               reader,
@@ -137,6 +156,9 @@ func (c *Consumer) Start() error {
 
 func (c *Consumer) Stop() (err error) {
 
+	c.mu.Lock() // protection for WaitGroup data race
+	defer c.mu.Unlock()
+
 	defer func() {
 		if err := recover(); err != nil {
 			c.logger.Error("stop: panic:" + fmt.Sprintln(err))
@@ -157,6 +179,13 @@ func (c *Consumer) Stop() (err error) {
 
 	if !isClosed {
 		defer c.logger.Info("done")
+
+		if errUnsubscribe := c.reader.Unsubscribe(); errUnsubscribe != nil {
+			c.logger.Error("failed to unsubscribe", zap.Error(errUnsubscribe))
+		} else if errUnassign := c.reader.Unassign(); errUnassign != nil {
+			c.logger.Error("failed to unassign", zap.Error(errUnassign))
+		}
+
 		err = c.reader.Close()
 	}
 
@@ -199,6 +228,9 @@ func (c *Consumer) listen() error {
 			case kafka.AssignedPartitions:
 				// consumer group rebalance event: assigned partition set
 
+				c.commitOffsets(consumerOffsets)
+				consumerOffsets.Clear()
+
 				opLog := c.logger.With(zap.String("operation", "rebalance"), zap.Any("event", e))
 
 				if err := checkPartitions(e.Partitions); err != nil {
@@ -231,10 +263,14 @@ func (c *Consumer) listen() error {
 					return err
 				}
 
+				c.onRebalance(c.ctx, e.Partitions)
 				opLog.Info("success")
 
 			case kafka.RevokedPartitions:
 				// consumer group rebalance event: revoked partition set
+
+				c.commitOffsets(consumerOffsets)
+				consumerOffsets.Clear()
 
 				opLog := c.logger.With(zap.String("operation", "revoked"), zap.Any("event", e))
 
@@ -244,15 +280,13 @@ func (c *Consumer) listen() error {
 					return err
 				}
 
-				err := c.reader.Unassign()
-				if err != nil {
+				if err := c.reader.Unassign(); err != nil {
 					opLog.Error("failed to unassign", zap.Error(err))
 					c.onError(c.ctx, err)
 					return err
 				}
 
-				consumerOffsets.Sync(e.Partitions...)
-
+				c.onRevoke(c.ctx, e.Partitions)
 				opLog.Info("success")
 
 			case *kafka.Message:
@@ -284,6 +318,9 @@ func (c *Consumer) listen() error {
 				// consumer reached end of partition
 				// Needs to be explicitly enabled by setting the `enable.partition.eof`
 				// configuration property to true.
+
+				c.commitOffsets(consumerOffsets)
+				consumerOffsets.Clear()
 
 				opLog := c.logger.With(zap.String("operation", "partition EOF"), zap.Any("event", e))
 

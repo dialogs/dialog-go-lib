@@ -6,23 +6,26 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
+type offsetEntry struct {
+	Offset kafka.Offset
+	Count  int
+}
+
 type offset struct {
-	topics  map[string]map[int32]kafka.Offset
+	topics  map[string]map[int32]*offsetEntry
 	counter int
 	mu      sync.RWMutex
 }
 
 func newOffset() *offset {
 	return &offset{
-		topics: make(map[string]map[int32]kafka.Offset),
+		topics: make(map[string]map[int32]*offsetEntry),
 	}
 }
 
 func (o *offset) Add(in ...kafka.TopicPartition) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-
-	o.counter += len(in)
 
 	for i := range in {
 		val := &in[i]
@@ -35,57 +38,34 @@ func (o *offset) Add(in ...kafka.TopicPartition) {
 		partitons, ok := o.topics[topic]
 		if ok {
 			partitonOffset, ok := partitons[val.Partition]
-			if !ok || partitonOffset < val.Offset {
-				partitons[val.Partition] = val.Offset
+			if !ok {
+				partitonOffset = &offsetEntry{}
+				partitons[val.Partition] = partitonOffset
+			}
+
+			if !ok || partitonOffset.Offset < val.Offset {
+				partitonOffset.Offset = val.Offset
+				partitonOffset.Count++
+				o.counter++
 			}
 
 		} else {
-			partitons = map[int32]kafka.Offset{
-				val.Partition: val.Offset,
+			partitons = map[int32]*offsetEntry{
+				val.Partition: &offsetEntry{Offset: val.Offset, Count: 1},
 			}
+			o.counter++
 		}
 
 		o.topics[topic] = partitons
 	}
 }
 
-func (o *offset) Sync(in ...kafka.TopicPartition) {
-
-	inMap := partitionsListToMap(in)
+func (o *offset) Clear() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	{
-		// fix topics list
-		removeTopics := make([]string, 0, len(o.topics))
-		for topic := range o.topics {
-			if _, ok := inMap[topic]; !ok {
-				removeTopics = append(removeTopics, topic)
-			}
-		}
-
-		for _, topic := range removeTopics {
-			delete(o.topics, topic)
-		}
-	}
-
-	{
-		// fix partitions
-		for topic, srcPartitions := range o.topics {
-			removePartitions := make([]int32, 0, len(srcPartitions))
-
-			newPartitions := inMap[topic]
-			for num := range srcPartitions {
-				if _, ok := newPartitions[num]; !ok {
-					removePartitions = append(removePartitions, num)
-				}
-			}
-
-			for _, num := range removePartitions {
-				delete(srcPartitions, num)
-			}
-		}
-	}
+	o.topics = make(map[string]map[int32]*offsetEntry)
+	o.counter = 0
 }
 
 func (o *offset) Counter() (counter int) {
@@ -107,12 +87,13 @@ func (o *offset) Remove(in kafka.TopicPartition) {
 
 	partitions, ok := o.topics[topic]
 	if ok {
+		entry := partitions[in.Partition]
 		delete(partitions, in.Partition)
 		if len(partitions) == 0 {
 			delete(o.topics, topic)
 		}
 
-		o.counter--
+		o.counter -= entry.Count
 	}
 
 	if len(o.topics) == 0 {
@@ -130,36 +111,11 @@ func (o *offset) Get() (retval []kafka.TopicPartition) {
 			retval = append(retval, kafka.TopicPartition{
 				Topic:     stringPointer(topic),
 				Partition: p,
-				Offset:    po,
+				Offset:    po.Offset,
 			})
 		}
 	}
 	o.mu.RUnlock()
 
 	return
-}
-
-func partitionsListToMap(in []kafka.TopicPartition) map[string]map[int32]kafka.Offset {
-
-	retval := make(map[string]map[int32]kafka.Offset)
-
-	for i := range in {
-		val := &in[i]
-
-		var topic string
-		if val.Topic != nil {
-			topic = *val.Topic
-		}
-
-		partitons, ok := retval[topic]
-		if !ok {
-			partitons = map[int32]kafka.Offset{}
-		}
-
-		partitons[val.Partition] = val.Offset
-
-		retval[topic] = partitons
-	}
-
-	return retval
 }

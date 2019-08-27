@@ -1,6 +1,6 @@
 .DEFAULT_GOAL=all
 
-PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/' | grep -v '/kafka')
+PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/')
 TEST_TARGETS:=$(foreach p,${PACKAGES_WITH_TESTS},test-$(p))
 TEST_OUT_DIR:=testout
 
