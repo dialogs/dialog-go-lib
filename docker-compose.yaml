@@ -4,29 +4,30 @@ version: '3'
 
 services:
   zookeeper:
-    image: 'bitnami/zookeeper:latest'
+    image: confluentinc/cp-zookeeper:5.2.3
     ports:
       - '2181:2181'
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ALLOW_ANONYMOUS_LOGIN: "yes"
 
   kafka:
-    image: 'bitnami/kafka:latest'
+    image: confluentinc/cp-kafka:5.2.3
+    depends_on:
+      - zookeeper
     ports:
       - '9092:9092'
     environment:
-      ALLOW_PLAINTEXT_LISTENER: 'yes'
-      KAFKA_PORT: 9092
-      KAFKA_BROKER_ID: 0
-      KAFKA_ADVERTISED_PORT: 9092
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
-      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_DELETE_TOPIC_ENABLE: "true"
       KAFKA_CREATE_TOPICS: "TestKafka:1:1"
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
 
   postgres:
     image: postgres:11

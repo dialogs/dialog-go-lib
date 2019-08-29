@@ -77,10 +77,10 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 
 	c := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
 	go func() { require.NoError(t, c.Start()) }()
-	defer func() { require.NoError(t, c.Stop()) }()
+	defer c.Stop()
 
 	time.Sleep(time.Second)
-	require.NoError(t, c.Stop())
+	c.Stop()
 
 	require.EqualError(t, c.Start(), "consumer already closed")
 }
@@ -112,7 +112,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	}
 
 	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
-	defer func() { require.NoError(t, c1.Stop()) }()
+	defer c1.Stop()
 
 	go func() { require.NoError(t, c1.Start()) }()
 
@@ -144,7 +144,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	require.Equal(t, int32(0), res.TopicPartition.Partition)
 	require.Equal(t, []byte(Topic), res.Value)
 
-	require.NoError(t, c1.Stop())
+	c1.Stop()
 }
 
 func TestConsumerRebalance(t *testing.T) {
@@ -181,18 +181,18 @@ func TestConsumerRebalance(t *testing.T) {
 	}
 
 	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
-	defer func() { require.NoError(t, c1.Stop()) }()
+	defer c1.Stop()
 	go func() { require.NoError(t, c1.Start()) }()
 
 	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
-	defer func() { require.NoError(t, c2.Stop()) }()
+	defer c2.Stop()
 	go func() { require.NoError(t, c2.Start()) }()
 
 	waitRebalance(chRebalance)
 
 	checkAssignmentBefore(t, c1, c2, CountPartitions)
 
-	require.NoError(t, c2.Stop())
+	c2.Stop()
 
 	waitRebalance(chRebalance)
 
@@ -222,7 +222,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 	}
 
 	c1 := newConsumer(t, []string{""}, nil, onError, onProcess, onCommit, nil, nil)
-	defer func() { require.NoError(t, c1.Stop()) }()
+	defer c1.Stop()
 
 	require.EqualError(t, c1.Start(), "subscribe to topics failed: Local: Invalid argument or configuration")
 }
@@ -261,12 +261,12 @@ func TestConsumerRevokePartition(t *testing.T) {
 	}
 
 	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
-	defer func() { require.NoError(t, c1.Stop()) }()
+	defer c1.Stop()
 
 	go func() { require.NoError(t, c1.Start()) }()
 
 	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
-	defer func() { require.NoError(t, c2.Stop()) }()
+	defer c2.Stop()
 
 	go func() { require.NoError(t, c2.Start()) }()
 
@@ -331,9 +331,6 @@ func TestConsumerCommit(t *testing.T) {
 
 		chRebalance := make(chan int, 10000000) // buffer: channel use only in a start of a test (waiting of consumers)
 		onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
-			if len(topics) == 0 {
-				panic("empty topics list")
-			}
 			chRebalance <- len(topics)
 		}
 
@@ -355,8 +352,8 @@ func TestConsumerCommit(t *testing.T) {
 		{Topics: 1, Partitions: 1, Consumers: 1, Rebalance: true, CountMessages: 30},
 		{Topics: 1, Partitions: 3, Consumers: 4, Rebalance: true, CountMessages: 30},
 		{Topics: 2, Partitions: 3, Consumers: 4, Rebalance: true, CountMessages: 11},
-		{Topics: 3, Partitions: 5, Consumers: 4, Rebalance: false, CountMessages: 30},
-		{Topics: 3, Partitions: 5, Consumers: 4, Rebalance: true, CountMessages: 151},
+		{Topics: 2, Partitions: 10, Consumers: 40, Rebalance: false, CountMessages: 200},
+		{Topics: 2, Partitions: 10, Consumers: 40, Rebalance: true, CountMessages: 200},
 	} {
 
 		name := fmt.Sprintf("topics: %d; partitions: %d; consumers: %d; rebalance: %v; messages: %d",
@@ -394,7 +391,7 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 	consumersList := make([]*Consumer, 0, countConsumers)
 	defer func() {
 		for i := range consumersList {
-			require.NoError(t, consumersList[i].Stop(), testInfo)
+			consumersList[i].Stop()
 		}
 	}()
 
@@ -466,7 +463,7 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 		if turnOnRebalance {
 			if prevPercent != percent && percent%30 == 1 {
 				zapLogger.Info("stop consumer")
-				require.NoError(t, consumersList[0].Stop(), testInfo)
+				consumersList[0].Stop()
 
 				time.Sleep(time.Second * 4) // wait rebalance
 
@@ -478,7 +475,7 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 
 			} else if countConsumers > 1 && countMessages > 10 && count == countMessages-10 {
 				zapLogger.Info("stop consumer")
-				require.NoError(t, consumersList[0].Stop(), testInfo)
+				consumersList[0].Stop()
 
 				time.Sleep(time.Second * 4) // wait rebalance
 			}
@@ -515,7 +512,7 @@ func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onErro
 		OnRevoke:          onRevoke,
 		OnRebalance:       onRebalance,
 		Topics:            topicList,
-		CommitOffsetCount: 1,
+		CommitOffsetCount: 11,
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":           "group-id",
 			"bootstrap.servers":  getKafkaServers(),
