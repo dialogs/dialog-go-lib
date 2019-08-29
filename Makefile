@@ -5,7 +5,7 @@ TEST_TARGETS:=$(foreach p,${PACKAGES_WITH_TESTS},test-$(p))
 TEST_OUT_DIR:=testout
 
 .PHONY: all
-all: mod static mock proto lint testall
+all: static mock proto easyjson mod lint testall
 
 .PHONY: mod
 mod:
@@ -39,6 +39,16 @@ mock:
 	go-tools-mock:1.0.0 \
 	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
+
+.PHONY: easyjson
+easyjson:
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
+	-w "/go/src/github.com/dialogs/dialog-go-lib/" \
+	go-tools-easyjson:1.0.0 \
+	rm -rfv kafka/registry/*_easyjson.go && \
+	easyjson -all kafka/registry/request.go && \
+	easyjson -all kafka/registry/response.go
 
 .PHONY: proto
 proto:
