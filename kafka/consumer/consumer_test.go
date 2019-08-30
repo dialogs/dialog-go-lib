@@ -69,7 +69,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -105,10 +105,11 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
+		require.Equal(t, 1, count)
 	}
 
 	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
@@ -168,7 +169,7 @@ func TestConsumerRebalance(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -215,7 +216,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 		require.NotEmpty(t, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -248,7 +249,7 @@ func TestConsumerRevokePartition(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -323,7 +324,7 @@ func TestConsumerCommit(t *testing.T) {
 			return nil
 		}
 
-		onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset) {
+		onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
 			require.Contains(t, topicList, topic)
 			require.True(t, partition >= 0)
 			require.True(t, offset >= 0)

@@ -14,12 +14,12 @@ import (
 
 type FuncOnError func(ctx context.Context, err error)
 type FuncOnProcess func(ctx context.Context, msg *kafka.Message) error
-type FuncOnCommit func(ctx context.Context, topic string, partition int32, offset kafka.Offset)
+type FuncOnCommit func(ctx context.Context, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, topic []kafka.TopicPartition)
 
 var (
-	nopCommitFunc      = func(ctx context.Context, topic string, partition int32, offset kafka.Offset) {}
+	nopCommitFunc      = func(ctx context.Context, topic string, partition int32, offset kafka.Offset, committed int) {}
 	nopOnRevokeFunc    = func(ctx context.Context, topic []kafka.TopicPartition) {}
 	nopOnRebalanceFunc = func(ctx context.Context, topic []kafka.TopicPartition) {}
 )
@@ -388,7 +388,7 @@ func (c *Consumer) handleOffsetCommitted(e *kafka.OffsetsCommitted, consumerOffs
 
 func (c *Consumer) commitOffsets(consumerOffsets *offset) {
 
-	list := consumerOffsets.Get()
+	list, count := consumerOffsets.Get()
 	if len(list) > 0 {
 		opLog := c.logger.WithOptions(zap.AddCallerSkip(1)).With(
 			zap.String("operation", "commit offsets"),
@@ -418,7 +418,8 @@ func (c *Consumer) commitOffsets(consumerOffsets *offset) {
 				topic = *item.Topic
 			}
 
-			c.onCommit(c.ctx, topic, item.Partition, item.Offset)
+			countCommitted := count[getPartitionKey(item.Topic, item.Partition)]
+			c.onCommit(c.ctx, topic, item.Partition, item.Offset, countCommitted)
 		}
 	}
 }
