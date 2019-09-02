@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"strconv"
 	"sync"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -103,7 +104,9 @@ func (o *offset) Remove(in kafka.TopicPartition) {
 	o.mu.Unlock()
 }
 
-func (o *offset) Get() (retval []kafka.TopicPartition) {
+func (o *offset) Get() (retval []kafka.TopicPartition, count map[string]int) {
+
+	count = make(map[string]int)
 
 	o.mu.RLock()
 	for topic, partition := range o.topics {
@@ -113,9 +116,20 @@ func (o *offset) Get() (retval []kafka.TopicPartition) {
 				Partition: p,
 				Offset:    po.Offset,
 			})
+			count[getPartitionKey(&topic, p)] = po.Count
 		}
 	}
 	o.mu.RUnlock()
 
 	return
+}
+
+func getPartitionKey(topic *string, partition int32) string {
+
+	var key string
+	if topic != nil {
+		key = *topic
+	}
+
+	return key + strconv.Itoa(int(partition))
 }

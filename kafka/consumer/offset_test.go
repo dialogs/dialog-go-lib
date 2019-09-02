@@ -60,6 +60,7 @@ func TestOffsetGetRemove(t *testing.T) {
 	src := []kafka.TopicPartition{
 		kafka.TopicPartition{Topic: stringPointer("t1"), Partition: 0, Offset: 1},
 		kafka.TopicPartition{Topic: stringPointer("t1"), Partition: 1, Offset: 2},
+		kafka.TopicPartition{Topic: stringPointer("t1"), Partition: 1, Offset: 3},
 		kafka.TopicPartition{Topic: stringPointer("t2"), Partition: 0, Offset: 3},
 		kafka.TopicPartition{Topic: stringPointer("t3"), Partition: 0, Offset: 4},
 	}
@@ -67,17 +68,32 @@ func TestOffsetGetRemove(t *testing.T) {
 	o := newOffset()
 	o.Add(src...)
 
+	{
+		_, count := o.Get()
+		require.Equal(t, 1, count[getPartitionKey(stringPointer("t1"), 0)])
+		require.Equal(t, 2, count[getPartitionKey(stringPointer("t1"), 1)])
+		require.Equal(t, 1, count[getPartitionKey(stringPointer("t2"), 0)])
+		require.Equal(t, 1, count[getPartitionKey(stringPointer("t3"), 0)])
+	}
+
 	counterBefore := o.Counter()
 	require.Equal(t, len(src), counterBefore)
 
 	for i, item := range src {
 
-		partitions := o.Get()
+		partitions, count := o.Get()
 		require.NotNil(t, partitions)
-		require.Equal(t, counterBefore-i, o.Counter())
+		var total int
+		for _, v := range count {
+			total += v
+		}
+
+		require.Equal(t, total, o.Counter())
+		partitionCount := count[getPartitionKey(item.Topic, item.Partition)]
 
 		o.Remove(item)
-		require.Equal(t, counterBefore-(i+1), o.Counter())
+		counterBefore -= partitionCount
+		require.Equal(t, counterBefore, o.Counter())
 
 		if i+1 < len(src) {
 			require.NotEqual(t, map[string]map[int32]kafka.Offset{}, o.topics)

@@ -104,8 +104,6 @@ func easyjson3c9d2b01DecodeGithubComDialogsDialogGoLibKafkaRegistry1(in *jlexer.
 		switch key {
 		case "compatibility":
 			out.Compatibility = string(in.String())
-		case "compatibilityLevel":
-			out.CompatibilityLevel = string(in.String())
 		default:
 			in.SkipRecursive()
 		}
@@ -124,11 +122,6 @@ func easyjson3c9d2b01EncodeGithubComDialogsDialogGoLibKafkaRegistry1(out *jwrite
 		const prefix string = ",\"compatibility\":"
 		out.RawString(prefix[1:])
 		out.String(string(in.Compatibility))
-	}
-	if in.CompatibilityLevel != "" {
-		const prefix string = ",\"compatibilityLevel\":"
-		out.RawString(prefix)
-		out.String(string(in.CompatibilityLevel))
 	}
 	out.RawByte('}')
 }
