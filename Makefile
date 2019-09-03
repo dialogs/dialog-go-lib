@@ -47,9 +47,9 @@ easyjson:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}/" \
 	go-tools-easyjson:1.0.0 \
-	rm -rfv kafka/registry/*_easyjson.go && \
-	easyjson -all kafka/registry/request.go && \
-	easyjson -all kafka/registry/response.go
+	rm -rfv kafka/schemaregistry/*_easyjson.go && \
+	easyjson -all kafka/schemaregistry/request.go && \
+	easyjson -all kafka/schemaregistry/response.go
 
 .PHONY: proto
 proto:

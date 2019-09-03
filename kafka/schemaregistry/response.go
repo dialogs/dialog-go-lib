@@ -1,4 +1,4 @@
-package registry
+package schemaregistry
 
 // https://docs.confluent.io/2.0.1/schema-registry/docs/api.html#config
 type ResConfig struct {
