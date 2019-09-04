@@ -9,7 +9,10 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.3.1
 	github.com/google/uuid v1.1.1
 	github.com/lib/pq v1.0.0
+	github.com/linkedin/goavro/v2 v2.9.6
 	github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/pierrec/lz4 v2.2.6+incompatible // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.1.0
@@ -19,5 +22,5 @@ require (
 	go.uber.org/zap v1.10.0
 	golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
 	google.golang.org/grpc v1.23.0
-	software.sslmate.com/src/go-pkcs12 v0.0.0-20190209200317-47dd539968c4eaea8454f9b13f85b7fbb78c789a
+	software.sslmate.com/src/go-pkcs12 v0.0.0-20190209200317-47dd539968c4
 )

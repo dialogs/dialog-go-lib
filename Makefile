@@ -38,8 +38,9 @@ mock:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
 	go-tools-mock:1.0.0 \
+	sh -c '\
 	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
-	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
+	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
 
 .PHONY: easyjson
 easyjson:
@@ -47,9 +48,10 @@ easyjson:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}/" \
 	go-tools-easyjson:1.0.0 \
+	sh -c '\
 	rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
-	easyjson -all kafka/schemaregistry/response.go
+	easyjson -all kafka/schemaregistry/response.go'
 
 .PHONY: proto
 proto:
