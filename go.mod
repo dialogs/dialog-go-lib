@@ -1,6 +1,6 @@
 module github.com/dialogs/dialog-go-lib
 
-go 1.12
+go 1.13
 
 require (
 	github.com/confluentinc/confluent-kafka-go v1.1.0
@@ -10,8 +10,6 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/lib/pq v1.0.0
 	github.com/mailru/easyjson v0.0.0-20190626092158-b2ccc519800e
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/pierrec/lz4 v2.2.6+incompatible // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.1.0

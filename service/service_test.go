@@ -337,7 +337,9 @@ func testHTTPTLSClientPing(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Cer
 		PingConn(address, 2, time.Second, &tls.Config{
 			ServerName:   "localhost",
 			RootCAs:      caPool,
-			CipherSuites: []uint16{},
+			Certificates: []tls.Certificate{*tlsCert},
+			CipherSuites: []uint16{tls.TLS_CHACHA20_POLY1305_SHA256},
+			MaxVersion:   tls.VersionTLS10,
 		}),
 		"remote error: tls: handshake failure")
 }
@@ -351,9 +353,8 @@ func testHTTPTLSClientError(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Ce
 			RootCAs:      caPool,
 			ServerName:   "localhost",
 			Certificates: []tls.Certificate{*tlsCert},
-			CipherSuites: []uint16{
-				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-			},
+			CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA},
+			MaxVersion:   tls.VersionTLS10,
 		}: "Get %s: remote error: tls: handshake failure",
 		// invalid server name
 		&tls.Config{
