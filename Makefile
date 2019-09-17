@@ -3,9 +3,10 @@
 PACKAGES_WITH_TESTS:=$(shell go list -f="{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}" ./... | grep -v '/vendor/')
 TEST_TARGETS:=$(foreach p,${PACKAGES_WITH_TESTS},test-$(p))
 TEST_OUT_DIR:=testout
+PROJECT:=github.com/dialogs/dialog-go-lib
 
 .PHONY: all
-all: mod static mock proto lint testall
+all: static mock proto mod easyjson mod lint testall
 
 .PHONY: mod
 mod:
@@ -16,12 +17,12 @@ mod:
 
 .PHONY: static
 static:
-	$(eval $@_target := github.com/dialogs/dialog-go-lib/db/migrations/test)
+	$(eval $@_target := ${PROJECT}/db/migrations/test)
 	rm -f $($@_target)/static.go
 
 	docker run -it --rm \
-	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
-	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-w "/go/src/${PROJECT}" \
 	go-tools-embedded:1.0.0 \
 	go generate $($@_target)
 
@@ -34,11 +35,21 @@ mock:
 	rm -f $($@_target)/IWriter.go
 
 	docker run -it --rm \
-	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
-	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-w "/go/src/${PROJECT}" \
 	go-tools-mock:1.0.0 \
 	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
+
+.PHONY: easyjson
+easyjson:
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-w "/go/src/${PROJECT}/" \
+	go-tools-easyjson:1.0.0 \
+	rm -rfv kafka/schemaregistry/*_easyjson.go && \
+	easyjson -all kafka/schemaregistry/request.go && \
+	easyjson -all kafka/schemaregistry/response.go
 
 .PHONY: proto
 proto:
@@ -48,8 +59,8 @@ proto:
 	rm -f ${$@_target}/*.pb.go
 
 	docker run -it --rm \
-	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
-	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-w "/go/src/${PROJECT}" \
 	go-tools-protoc:1.0.0 \
 	protoc \
 	-I=${$@_source} \
@@ -62,8 +73,8 @@ proto:
 .PHONY: lint
 lint:
 	docker run -it --rm \
-	-v "$(shell pwd):/go/src/github.com/dialogs/dialog-go-lib" \
-	-w "/go/src/github.com/dialogs/dialog-go-lib" \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-w "/go/src/${PROJECT}" \
 	go-tools-linter:1.0.0 \
 	golangci-lint run ./... --exclude "is deprecated"
 

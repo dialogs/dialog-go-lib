@@ -29,6 +29,18 @@ services:
       KAFKA_DELETE_TOPIC_ENABLE: "true"
       KAFKA_CREATE_TOPICS: "TestKafka:1:1"
 
+  schema-registry:
+    image: confluentinc/cp-schema-registry:5.2.3
+    depends_on:
+      - kafka
+      - zookeeper
+    ports:
+      - '8081:8081'
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+
   postgres:
     image: postgres:11
     restart: always
