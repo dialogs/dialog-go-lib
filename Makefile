@@ -23,7 +23,7 @@ static:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
-	go-tools-embedded:1.0.0 \
+	go-tools-embedded:latest \
 	go generate $($@_target)
 
 .PHONY: mock
@@ -37,19 +37,19 @@ mock:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
-	go-tools-mock:1.0.0 \
-	mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
-	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)
+	go-tools-mock:latest \
+	sh -c 'mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
+	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
 
 .PHONY: easyjson
 easyjson:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}/" \
-	go-tools-easyjson:1.0.0 \
-	rm -rfv kafka/schemaregistry/*_easyjson.go && \
+	go-tools-easyjson:latest \
+	sh -c 'rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
-	easyjson -all kafka/schemaregistry/response.go
+	easyjson -all kafka/schemaregistry/response.go'
 
 .PHONY: proto
 proto:
@@ -61,7 +61,7 @@ proto:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
-	go-tools-protoc:1.0.0 \
+	go-tools-protoc:latest \
 	protoc \
 	-I=${$@_source} \
 	-I=vendor \
@@ -75,7 +75,7 @@ lint:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
-	go-tools-linter:1.0.0 \
+	go-tools-linter:latest \
 	golangci-lint run ./... --exclude "is deprecated"
 
 .PHONY: testall
