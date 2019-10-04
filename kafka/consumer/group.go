@@ -17,12 +17,11 @@ type GroupConfig struct {
 }
 
 type Group struct {
-	consumerConfig *Config
-	workers        int
-	logger         *zap.Logger
-	wg             sync.WaitGroup
-	ctx            context.Context
-	ctxCancel      func()
+	consumers *list.List
+	logger    *zap.Logger
+	wg        sync.WaitGroup
+	ctx       context.Context
+	ctxCancel func()
 }
 
 func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
@@ -39,14 +38,23 @@ func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
 		workers = runtime.NumCPU()
 	}
 
+	consumers := list.New()
+	for i := 0; i < workers; i++ {
+		c, err := New(cfg.Config, logger)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to start consumer group")
+		}
+
+		consumers.PushBack(c)
+	}
+
 	ctxDone, ctxDoneCancel := context.WithCancel(context.Background())
 
 	return &Group{
-		consumerConfig: cfg.Config,
-		workers:        workers,
-		logger:         logger,
-		ctx:            ctxDone,
-		ctxCancel:      ctxDoneCancel,
+		consumers: consumers,
+		logger:    logger,
+		ctx:       ctxDone,
+		ctxCancel: ctxDoneCancel,
 	}, nil
 }
 
@@ -62,30 +70,20 @@ func (g *Group) Start() (err error) {
 		// ok
 	}
 
-	consumerList := list.New()
-	for i := 0; i < g.workers; i++ {
-		c, err := New(g.consumerConfig, g.logger)
-		if err != nil {
-			return errors.Wrap(err, "failed to start consumer group")
-		}
-
-		consumerList.PushBack(c)
-	}
-
 	defer func() {
-		for item := consumerList.Front(); item != nil; item = item.Next() {
+		for item := g.consumers.Front(); item != nil; item = item.Next() {
 			item.Value.(*Consumer).Stop()
 		}
 	}()
 
-	retval := make(chan error, consumerList.Len()+1) // +1 context closed
+	retval := make(chan error, g.consumers.Len()+1) // +1 context closed
 
 	go func() {
 		<-g.ctx.Done()
 		retval <- nil
 	}()
 
-	for item := consumerList.Front(); item != nil; item = item.Next() {
+	for item := g.consumers.Front(); item != nil; item = item.Next() {
 		g.wg.Add(1)
 		go func(worker *Consumer) {
 			defer g.wg.Done()
