@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
-
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -506,6 +505,16 @@ func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onErro
 
 	zapLogger := newLogger(t)
 
+	cfg := newConsumerConfig(topicList, props, onError, onProcess, onCommit, onRevoke, onRebalance)
+
+	c, err := New(cfg, zapLogger)
+	require.NoError(t, err)
+
+	return c
+}
+
+func newConsumerConfig(topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance) *Config {
+
 	cfg := &Config{
 		OnError:           onError,
 		OnProcess:         onProcess,
@@ -528,10 +537,7 @@ func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onErro
 		}
 	}
 
-	c, err := New(cfg, zapLogger)
-	require.NoError(t, err)
-
-	return c
+	return cfg
 }
 
 func newProducer(t *testing.T, topic string) *kafka.Producer {
