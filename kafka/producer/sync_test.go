@@ -15,7 +15,7 @@ import (
 
 func TestSync(t *testing.T) {
 
-	var Topic = "test-doubleclose-" + strconv.Itoa(int(time.Now().Unix()))
+	var Topic = "test-producer-sync-" + strconv.Itoa(int(time.Now().Unix()))
 
 	createTopic(t, Topic, 1, 1)
 	defer removeTopic(t, Topic)
