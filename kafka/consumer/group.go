@@ -5,6 +5,8 @@ import (
 	"context"
 	"runtime"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -22,6 +24,7 @@ type Group struct {
 	wg        sync.WaitGroup
 	ctx       context.Context
 	ctxCancel func()
+	started   int32 // for graceful shutdown
 }
 
 func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
@@ -58,21 +61,27 @@ func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
 	}, nil
 }
 
-func (g *Group) Start() (err error) {
+func (g *Group) Start() error {
 
 	g.logger.Info("wait for start")
 	g.wg.Wait()
 
 	select {
 	case <-g.ctx.Done():
-		return errors.Wrap(err, "consumers group already closed")
+		return errors.New("consumers group already closed")
 	default:
 		// ok
 	}
 
+	g.logger.Info("starting ...")
+
+	atomic.StoreInt32(&g.started, int32(g.consumers.Len()))
 	defer func() {
+		g.ctxCancel()
+
 		for item := g.consumers.Front(); item != nil; item = item.Next() {
 			item.Value.(*Consumer).Stop()
+			atomic.AddInt32(&g.started, -1)
 		}
 	}()
 
@@ -92,10 +101,24 @@ func (g *Group) Start() (err error) {
 		}(item.Value.(*Consumer))
 	}
 
+	g.logger.Info("success start")
+
 	return <-retval
 }
 
 func (g *Group) Stop() {
 	g.ctxCancel()
+
+	{
+		// graceful shutdown
+		tc := time.NewTicker(time.Millisecond)
+		defer tc.Stop()
+		for range tc.C {
+			if atomic.LoadInt32(&g.started) == 0 {
+				break
+			}
+		}
+	}
+
 	g.wg.Wait()
 }

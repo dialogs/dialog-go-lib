@@ -95,3 +95,40 @@ func TestGroup(t *testing.T) {
 		require.Equal(t, i, item)
 	}
 }
+
+func TestGracefulShutdown(t *testing.T) {
+
+	var Topic = "test-graceful-" + strconv.Itoa(int(time.Now().Unix()))
+
+	const (
+		CountPartitions = 100
+		CountMessages   = 100
+	)
+
+	createTopic(t, Topic, CountPartitions, 1)
+	defer func() { removeTopic(t, Topic) }()
+
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
+		require.NoError(t, err)
+	}
+
+	chMsg := make(chan *kafka.Message, CountMessages)
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+		chMsg <- msg
+		return nil
+	}
+
+	cfg := GroupConfig{
+		Workers: CountPartitions,
+		Config:  newConsumerConfig([]string{Topic}, nil, onError, onProcess, nil, nil, nil),
+	}
+
+	l := newLogger(t)
+	group, err := NewGroup(cfg, l)
+	require.NoError(t, err)
+	defer group.Stop()
+
+	go func() { require.NoError(t, group.Start()) }()
+
+	time.Sleep(time.Millisecond) // protection for error: 'consumers group already closed'
+}
