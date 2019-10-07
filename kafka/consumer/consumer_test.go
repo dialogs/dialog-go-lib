@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap/zapcore"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func init() {
@@ -25,8 +25,8 @@ func TestConsumerNew(t *testing.T) {
 	cfg := &Config{
 		CommitOffsetCount:    1,
 		CommitOffsetDuration: time.Hour,
-		OnError:              func(context.Context, error) {},
-		OnProcess:            func(context.Context, *kafka.Message) error { return nil },
+		OnError:              func(context.Context, *zap.Logger, error) {},
+		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message) error { return nil },
 		Topics:               []string{"a"},
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":          "group-id",
@@ -57,18 +57,18 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 	createTopic(t, Topic, 1, 1)
 	defer removeTopic(t, Topic)
 
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -91,12 +91,12 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	createTopic(t, Topic, 1, 1)
 	defer func() { removeTopic(t, Topic) }()
 
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		require.NoError(t, err)
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -104,7 +104,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -155,12 +155,12 @@ func TestConsumerRebalance(t *testing.T) {
 	createTopic(t, Topic, CountPartitions, 1)
 	defer func() { removeTopic(t, Topic) }()
 
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		require.NoError(t, err)
 	}
 
 	chMsg := make(chan *kafka.Message)
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -168,14 +168,14 @@ func TestConsumerRebalance(t *testing.T) {
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
 	}
 
 	chRebalance := make(chan int, 10)
-	onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+	onRebalance := func(_ context.Context, _ *zap.Logger, topics []kafka.TopicPartition) {
 		require.NotNil(t, topics)
 		chRebalance <- len(topics)
 	}
@@ -204,18 +204,18 @@ func TestConsumerRebalance(t *testing.T) {
 
 func TestConsumerFailedSubscribe(t *testing.T) {
 
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 		require.NotEmpty(t, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
@@ -237,25 +237,25 @@ func TestConsumerRevokePartition(t *testing.T) {
 	defer func() { removeTopic(t, Topic) }()
 
 	chErrors := make(chan error, 2)
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		chErrors <- err
 	}
 
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
 		return nil
 	}
 
-	onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
 	}
 
 	chRebalance := make(chan int)
-	onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+	onRebalance := func(_ context.Context, _ *zap.Logger, topics []kafka.TopicPartition) {
 		require.NotNil(t, topics)
 		chRebalance <- len(topics)
 	}
@@ -310,12 +310,12 @@ func TestConsumerCommit(t *testing.T) {
 			"enable.partition.eof": true,
 		}
 
-		onError := func(_ context.Context, err error) {
+		onError := func(_ context.Context, _ *zap.Logger, err error) {
 			panic(err)
 		}
 
 		chMsg := make(chan *kafka.Message, countMessages)
-		onProcess := func(_ context.Context, msg *kafka.Message) error {
+		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 			if msg == nil {
 				return errors.New("invalid message")
 			}
@@ -323,14 +323,14 @@ func TestConsumerCommit(t *testing.T) {
 			return nil
 		}
 
-		onCommit := func(_ context.Context, topic string, partition int32, offset kafka.Offset, count int) {
+		onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
 			require.Contains(t, topicList, topic)
 			require.True(t, partition >= 0)
 			require.True(t, offset >= 0)
 		}
 
 		chRebalance := make(chan int, 10000000) // buffer: channel use only in a start of a test (waiting of consumers)
-		onRebalance := func(_ context.Context, topics []kafka.TopicPartition) {
+		onRebalance := func(_ context.Context, _ *zap.Logger, topics []kafka.TopicPartition) {
 			chRebalance <- len(topics)
 		}
 

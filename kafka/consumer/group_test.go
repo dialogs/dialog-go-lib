@@ -9,6 +9,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestGroup(t *testing.T) {
@@ -23,12 +24,12 @@ func TestGroup(t *testing.T) {
 	createTopic(t, Topic, CountPartitions, 1)
 	defer func() { removeTopic(t, Topic) }()
 
-	onError := func(_ context.Context, err error) {
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
 		require.NoError(t, err)
 	}
 
 	chMsg := make(chan *kafka.Message, CountMessages)
-	onProcess := func(_ context.Context, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 		chMsg <- msg
 		return nil
 	}

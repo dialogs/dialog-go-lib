@@ -23,10 +23,10 @@ func TestSync(t *testing.T) {
 	chMessages := make(chan *kafka.Message)
 
 	consumerCfg := &consumer.Config{
-		OnError: func(_ context.Context, err error) {
+		OnError: func(_ context.Context, _ *zap.Logger, err error) {
 			require.NoError(t, err)
 		},
-		OnProcess: func(_ context.Context, msg *kafka.Message) error {
+		OnProcess: func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
 			chMessages <- msg
 			return nil
 		},
