@@ -96,7 +96,7 @@ func TestGroup(t *testing.T) {
 	}
 }
 
-func TestGracefulShutdown(t *testing.T) {
+func TestGroupGracefulShutdown(t *testing.T) {
 
 	var Topic = "test-graceful-" + strconv.Itoa(int(time.Now().Unix()))
 

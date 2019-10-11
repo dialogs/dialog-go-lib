@@ -5,8 +5,6 @@ import (
 	"context"
 	"runtime"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -21,10 +19,10 @@ type GroupConfig struct {
 type Group struct {
 	consumers *list.List
 	logger    *zap.Logger
-	wg        sync.WaitGroup
 	ctx       context.Context
 	ctxCancel func()
-	started   int32 // for graceful shutdown
+	mu        sync.RWMutex
+	wg        sync.WaitGroup
 }
 
 func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
@@ -64,7 +62,9 @@ func NewGroup(cfg GroupConfig, logger *zap.Logger) (*Group, error) {
 func (g *Group) Start() error {
 
 	g.logger.Info("wait for start")
-	g.wg.Wait()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	select {
 	case <-g.ctx.Done():
@@ -74,32 +74,23 @@ func (g *Group) Start() error {
 	}
 
 	g.logger.Info("starting ...")
-
-	atomic.StoreInt32(&g.started, int32(g.consumers.Len()))
-	defer func() {
-		g.ctxCancel()
-
-		for item := g.consumers.Front(); item != nil; item = item.Next() {
-			item.Value.(*Consumer).Stop()
-			atomic.AddInt32(&g.started, -1)
-		}
-	}()
-
 	retval := make(chan error, g.consumers.Len()+1) // +1 context closed
+
+	defer g.ctxCancel()
+
+	g.wg.Add(g.consumers.Len())
+	for item := g.consumers.Front(); item != nil; item = item.Next() {
+		go func(c *Consumer) {
+			defer g.wg.Done()
+
+			retval <- newGroupItem(c, g.ctx).Start()
+		}(item.Value.(*Consumer))
+	}
 
 	go func() {
 		<-g.ctx.Done()
-		retval <- nil
+		retval <- nil // success shutdown
 	}()
-
-	for item := g.consumers.Front(); item != nil; item = item.Next() {
-		g.wg.Add(1)
-		go func(worker *Consumer) {
-			defer g.wg.Done()
-			retval <- worker.Start()
-
-		}(item.Value.(*Consumer))
-	}
 
 	g.logger.Info("success start")
 
@@ -107,18 +98,11 @@ func (g *Group) Start() error {
 }
 
 func (g *Group) Stop() {
+
 	g.ctxCancel()
 
-	{
-		// graceful shutdown
-		tc := time.NewTicker(time.Millisecond)
-		defer tc.Stop()
-		for range tc.C {
-			if atomic.LoadInt32(&g.started) == 0 {
-				break
-			}
-		}
-	}
+	g.mu.Lock() // protection for WaitGroup data race
+	defer g.mu.Unlock()
 
 	g.wg.Wait()
 }

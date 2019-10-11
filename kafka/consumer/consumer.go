@@ -26,6 +26,8 @@ var (
 )
 
 type Consumer struct {
+	observable
+
 	id                   uuid.UUID
 	commitOffsetCount    int
 	commitOffsetDuration time.Duration
@@ -111,10 +113,22 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		topics:               cfg.Topics,
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
+		observable:           *newObservable(),
 	}, nil
 }
 
 func (c *Consumer) Start() error {
+
+	defer func() { c.observable.notify(StateClosed) }()
+
+	c.mu.Lock()
+	defer func() {
+		c.ctxCancel()
+		c.mu.Unlock()
+	}()
+
+	c.wg.Add(1)
+	defer c.wg.Done()
 
 	c.logger.Info("start")
 	defer func() {
@@ -133,27 +147,18 @@ func (c *Consumer) Start() error {
 		// ok
 	}
 
-	defer func() {
-		select {
-		case <-c.ctx.Done():
-			// nothing do
-		default:
-			c.Stop()
-		}
-	}()
-
-	c.wg.Add(1)
-	defer c.wg.Done()
+	c.observable.notify(StateRun)
 
 	return c.listen()
 }
 
 func (c *Consumer) Stop() {
 
+	c.ctxCancel()
+
 	c.mu.Lock() // protection for WaitGroup data race
 	defer c.mu.Unlock()
 
-	c.ctxCancel()
 	c.wg.Wait()
 }
 
