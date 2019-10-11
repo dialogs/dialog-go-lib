@@ -9,6 +9,8 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	types "github.com/gogo/protobuf/types"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	math "math"
 )
 
@@ -21,7 +23,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 func init() { proto.RegisterFile("test.proto", fileDescriptor_c161fcfdc0c3ff1e) }
 
@@ -73,6 +75,14 @@ func (c *checkerClient) Ping(ctx context.Context, in *types.Empty, opts ...grpc.
 // CheckerServer is the server API for Checker service.
 type CheckerServer interface {
 	Ping(context.Context, *types.Empty) (*types.Empty, error)
+}
+
+// UnimplementedCheckerServer can be embedded to have forward compatible implementations.
+type UnimplementedCheckerServer struct {
+}
+
+func (*UnimplementedCheckerServer) Ping(ctx context.Context, req *types.Empty) (*types.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 
 func RegisterCheckerServer(s *grpc.Server, srv CheckerServer) {
