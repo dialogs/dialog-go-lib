@@ -17,14 +17,13 @@ mod:
 
 .PHONY: static
 static:
-	$(eval $@_target := ${PROJECT}/db/migrations/test)
-	rm -f $($@_target)/static.go
-
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-w "/go/src/${PROJECT}" \
 	go-tools-embedded:latest \
-	go generate $($@_target)
+	sh -c '\
+	rm -fv ${PROJECT}/db/migrations/test/static.go && \
+	go generate ${PROJECT}/db/migrations/test'
 
 .PHONY: mock
 mock:
