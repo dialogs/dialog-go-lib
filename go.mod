@@ -15,7 +15,7 @@ require (
 	github.com/spf13/viper v1.4.0
 	github.com/stretchr/testify v1.4.0
 	go.uber.org/zap v1.10.0
-	golang.org/x/crypto v0.0.0-20190923035154-9ee001bba392
-	google.golang.org/grpc v1.23.1
+	golang.org/x/crypto v0.0.0-20191002192127-34f69633bfdc
+	google.golang.org/grpc v1.24.0
 	software.sslmate.com/src/go-pkcs12 v0.0.0-20190322163127-6e380ad96778
 )

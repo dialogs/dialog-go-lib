@@ -2,6 +2,7 @@ package producer
 
 import (
 	"context"
+
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/pkg/errors"
 )

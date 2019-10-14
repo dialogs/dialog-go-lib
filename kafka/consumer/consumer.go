@@ -12,19 +12,22 @@ import (
 	"go.uber.org/zap"
 )
 
-type FuncOnError func(ctx context.Context, err error)
-type FuncOnProcess func(ctx context.Context, msg *kafka.Message) error
-type FuncOnCommit func(ctx context.Context, topic string, partition int32, offset kafka.Offset, committed int)
-type FuncOnRevoke func(ctx context.Context, topic []kafka.TopicPartition)
-type FuncOnRebalance func(ctx context.Context, topic []kafka.TopicPartition)
+type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message) error
+type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
+type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
+type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 
 var (
-	nopCommitFunc      = func(ctx context.Context, topic string, partition int32, offset kafka.Offset, committed int) {}
-	nopOnRevokeFunc    = func(ctx context.Context, topic []kafka.TopicPartition) {}
-	nopOnRebalanceFunc = func(ctx context.Context, topic []kafka.TopicPartition) {}
+	nopCommitFunc = func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int) {
+	}
+	nopOnRevokeFunc    = func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition) {}
+	nopOnRebalanceFunc = func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition) {}
 )
 
 type Consumer struct {
+	observable
+
 	id                   uuid.UUID
 	commitOffsetCount    int
 	commitOffsetDuration time.Duration
@@ -110,10 +113,22 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		topics:               cfg.Topics,
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
+		observable:           *newObservable(),
 	}, nil
 }
 
 func (c *Consumer) Start() error {
+
+	defer func() { c.observable.notify(StateClosed) }()
+
+	c.mu.Lock()
+	defer func() {
+		c.ctxCancel()
+		c.mu.Unlock()
+	}()
+
+	c.wg.Add(1)
+	defer c.wg.Done()
 
 	c.logger.Info("start")
 	defer func() {
@@ -132,27 +147,18 @@ func (c *Consumer) Start() error {
 		// ok
 	}
 
-	defer func() {
-		select {
-		case <-c.ctx.Done():
-			// nothing do
-		default:
-			c.Stop()
-		}
-	}()
-
-	c.wg.Add(1)
-	defer c.wg.Done()
+	c.observable.notify(StateRun)
 
 	return c.listen()
 }
 
 func (c *Consumer) Stop() {
 
+	c.ctxCancel()
+
 	c.mu.Lock() // protection for WaitGroup data race
 	defer c.mu.Unlock()
 
-	c.ctxCancel()
 	c.wg.Wait()
 }
 
@@ -242,7 +248,7 @@ func (c *Consumer) listen() error {
 			case kafka.Error:
 				// Errors should generally be considered as informational, the client will try to automatically recover
 				c.logger.Error("error event", zap.Error(e))
-				c.onError(c.ctx, e)
+				c.onError(c.ctx, c.logger, e)
 
 			default:
 				c.logger.Error("unknown event", zap.Any("payload", e))
@@ -261,7 +267,7 @@ func (c *Consumer) handleRebalance(e *kafka.AssignedPartitions, consumerOffsets 
 
 	if err := checkPartitions(e.Partitions); err != nil {
 		opLog.Error("failed to check assigned partitions", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
@@ -272,7 +278,7 @@ func (c *Consumer) handleRebalance(e *kafka.AssignedPartitions, consumerOffsets 
 	committedOffsets, err := c.reader.Committed(e.Partitions, 5000)
 	if err != nil {
 		opLog.Error("failed to read committed offsets", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
@@ -285,11 +291,11 @@ func (c *Consumer) handleRebalance(e *kafka.AssignedPartitions, consumerOffsets 
 
 	if err := c.reader.Assign(committedOffsets); err != nil {
 		opLog.Error("failed to set assigned", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
-	c.onRebalance(c.ctx, e.Partitions)
+	c.onRebalance(c.ctx, opLog, e.Partitions)
 	opLog.Info("success")
 
 	return nil
@@ -304,17 +310,17 @@ func (c *Consumer) handleRevoke(e *kafka.RevokedPartitions, consumerOffsets *off
 
 	if err := checkPartitions(e.Partitions); err != nil {
 		opLog.Error("failed to check revoked partitions", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
 	if err := c.reader.Unassign(); err != nil {
 		opLog.Error("failed to unassign", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
-	c.onRevoke(c.ctx, e.Partitions)
+	c.onRevoke(c.ctx, opLog, e.Partitions)
 	opLog.Info("success")
 
 	return nil
@@ -326,11 +332,11 @@ func (c *Consumer) handleMessage(e *kafka.Message, consumerOffsets *offset) erro
 
 	if err := e.TopicPartition.Error; err != nil {
 		opLog.Error("failed to check", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
-	if err := c.onProcess(c.ctx, e); err != nil {
+	if err := c.onProcess(c.ctx, opLog, e); err != nil {
 		opLog.Error("failed to process message", zap.Error(err))
 		return err
 	}
@@ -357,7 +363,7 @@ func (c *Consumer) handlePartitionEOF(e *kafka.PartitionEOF, consumerOffsets *of
 	if err := e.Error; err != nil {
 		if kafkaErr, ok := err.(kafka.Error); !ok || kafkaErr.Code() != kafka.ErrPartitionEOF {
 			opLog.Error("failed to check", zap.Error(err))
-			c.onError(c.ctx, err)
+			c.onError(c.ctx, opLog, err)
 			return err
 		}
 	}
@@ -372,13 +378,13 @@ func (c *Consumer) handleOffsetCommitted(e *kafka.OffsetsCommitted, consumerOffs
 
 	if err := e.Error; err != nil {
 		opLog.Error("committed offsets", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
 	if err := checkPartitions(e.Offsets); err != nil {
 		opLog.Error("failed to check", zap.Error(err))
-		c.onError(c.ctx, err)
+		c.onError(c.ctx, opLog, err)
 		return err
 	}
 
@@ -397,13 +403,13 @@ func (c *Consumer) commitOffsets(consumerOffsets *offset) {
 		success, err := c.reader.CommitOffsets(list)
 		if err != nil {
 			opLog.Error("failed to commit", zap.Error(err))
-			c.onError(c.ctx, err)
+			c.onError(c.ctx, opLog, err)
 			return
 		}
 
 		if err := checkPartitions(success); err != nil {
 			opLog.Error("failed to commit", zap.Error(err))
-			c.onError(c.ctx, err)
+			c.onError(c.ctx, opLog, err)
 			return
 		}
 
@@ -419,7 +425,7 @@ func (c *Consumer) commitOffsets(consumerOffsets *offset) {
 			}
 
 			countCommitted := count[getPartitionKey(item.Topic, item.Partition)]
-			c.onCommit(c.ctx, topic, item.Partition, item.Offset, countCommitted)
+			c.onCommit(c.ctx, opLog, topic, item.Partition, item.Offset, countCommitted)
 		}
 	}
 }
