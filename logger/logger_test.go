@@ -1,9 +1,13 @@
 package logger
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -19,66 +23,137 @@ func TestLoggerNew(t *testing.T) {
 
 	for _, testInfo := range []struct {
 		Args  []string
-		Check func(*zap.Logger, string)
+		Check func(*zap.Logger, func() string, string)
 	}{
 		{
 			Args: []string{},
-			Check: func(l *zap.Logger, desc string) {
-				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+
+				l.Debug("message#dbg")
+				checkProdLoggerMessage(t, getOut(), "debug", "message#dbg")
 			},
 		},
 		{
 			Args: append(argsClone, "--loglevel", zapcore.InfoLevel.String()),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.DebugLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.InfoLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
+
+				l.Info("message#info")
+				checkProdLoggerMessage(t, getOut(), "info", "message#info")
 			},
 		},
 		{
 			Args: append(argsClone, "--loglevel="+zapcore.WarnLevel.String()),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.InfoLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.WarnLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+
+				l.Warn("message#warn")
+				checkProdLoggerMessage(t, getOut(), "warn", "message#warn")
 			},
 		},
 		{
 			Args: append(argsClone, "--loglevel="+zapcore.ErrorLevel.String(), "--logtime=iso8601"),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
+
+				l.Error("message#err")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err")
 			},
 		},
 		{
 			Args: append(argsClone[:1], "app", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
+
+				l.Error("message#err/iso8601")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err/iso8601")
 			},
 		},
 		{
 			Args: append(argsClone[:1], "app", "-c", "config.yaml", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc)
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
+
+				l.Error("message#err/iso8601")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err/iso8601")
 			},
 		},
 		{
-			Args: append(argsClone, "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601", "--logdevelop"),
-			Check: func(l *zap.Logger, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc)
-				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc)
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=1"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=True"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
 			},
 		},
 	} {
 
-		desc := strings.Join(testInfo.Args, ",")
+		func() {
+			r, w, err := os.Pipe()
+			require.NoError(t, err)
 
-		os.Args = testInfo.Args
-		l, err := New()
-		require.NoError(t, err, desc)
-		testInfo.Check(l, desc)
+			stdOut := os.Stdout
+			stdErr := os.Stderr
+
+			os.Stdout = w
+			os.Stderr = w
+
+			defer func() {
+				os.Stdout = stdOut
+				os.Stderr = stdErr
+				os.Args = args
+			}()
+
+			fnGetOut := func() func() string {
+				out := make(chan string, 1)
+
+				go func() {
+					buf := bytes.NewBuffer(nil)
+					_, err := io.Copy(buf, r)
+					require.NoError(t, err)
+					out <- buf.String()
+				}()
+
+				return func() string {
+					require.NoError(t, w.Close())
+					return <-out
+				}
+			}
+
+			desc := strings.Join(testInfo.Args, ",")
+
+			os.Args = testInfo.Args
+			l, err := New()
+			require.NoError(t, err, desc)
+			testInfo.Check(l, fnGetOut(), desc)
+		}()
+
 	}
-
 }
 
 func TestLoggerInvalidLevelName(t *testing.T) {
@@ -89,4 +164,48 @@ func TestLoggerInvalidLevelName(t *testing.T) {
 	l, err := New()
 	require.EqualError(t, err, `logger level (debug, info, warn, error, dpanic, panic, fatal): unrecognized level: "warning"`)
 	require.Nil(t, l)
+}
+
+func checkProdLoggerMessage(t *testing.T, src, level, message string) {
+
+	// source example:
+	// "level":"debug","ts":"2019-10-15T17:21:10.215+0300","caller":"logger/logger_test.go:110","msg":"message#debug/iso8601"}
+
+	msg := map[string]interface{}{}
+	require.NoError(t, json.NewDecoder(bytes.NewReader([]byte(src))).Decode(&msg), src)
+
+	require.Equal(t, level, msg["level"], src)
+	require.Equal(t, message, msg["msg"], src)
+
+	var (
+		ts  time.Time
+		err error
+	)
+	switch v := msg["ts"].(type) {
+	case string:
+		ts, err = time.Parse("2006-01-02T15:04:05.000Z0700", v)
+	case float64:
+		ts = time.Unix(int64(v), 0)
+	default:
+		t.Fatalf("unknown time type %#v", v)
+	}
+
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), ts, time.Second)
+}
+
+func checkDevLoggerMessage(t *testing.T, src, level, message string) {
+
+	// source example:
+	// 2019-10-15T17:22:07.766+0300    DEBUG   logger/logger_test.go:110       message#debug/iso8601
+
+	parts := strings.Split(src, "\t")
+	require.Len(t, parts, 4)
+
+	require.Equal(t, strings.ToUpper(level), parts[1], src)
+	require.Equal(t, message+"\n", parts[3], src)
+
+	ts, err := time.Parse("2006-01-02T15:04:05.000Z0700", parts[0])
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), ts, time.Second)
 }

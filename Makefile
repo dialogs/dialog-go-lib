@@ -13,13 +13,14 @@ mod:
 	rm -rf vendor
 	GO111MODULE=on go mod tidy
 	GO111MODULE=on go mod download
-	GO111MODULE=on go mod vendor
 
 .PHONY: static
 static:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
+	-e "GOFLAGS=" \
 	go-tools-embedded:latest \
 	sh -c '\
 	rm -fv ${PROJECT}/db/migrations/test/static.go && \
@@ -35,7 +36,9 @@ mock:
 
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
+	-e "GOFLAGS=" \
 	go-tools-mock:latest \
 	sh -c 'mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
@@ -44,7 +47,9 @@ mock:
 easyjson:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
-	-w "/go/src/${PROJECT}/" \
+	-v "${GOPATH}/pkg:/go/pkg" \
+	-w "/go/src/${PROJECT}" \
+	-e "GOFLAGS=" \
 	go-tools-easyjson:latest \
 	sh -c 'rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
@@ -59,7 +64,9 @@ proto:
 
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
+	-e "GOFLAGS=" \
 	go-tools-protoc:latest \
 	protoc \
 	-I=${$@_source} \
@@ -73,7 +80,9 @@ proto:
 lint:
 	docker run -it --rm \
 	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
+	-e "GOFLAGS=" \
 	go-tools-linter:latest \
 	golangci-lint run ./... --exclude "is deprecated"
 
