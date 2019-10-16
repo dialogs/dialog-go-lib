@@ -1,128 +1,211 @@
 package logger
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-func TestLogging(t *testing.T) {
+func TestLoggerNew(t *testing.T) {
+	args := os.Args
+	defer func() { os.Args = args }()
 
-	newout, err := ioutil.TempFile(os.TempDir(), "stdout")
-	require.NoError(t, err)
-	defer func() {
-		name := newout.Name()
-		defer func() {
-			require.NoError(t, os.Remove(name))
-		}()
+	argsClone := make([]string, len(args))
+	copy(argsClone, args)
 
-		require.NoError(t, newout.Close())
-	}()
+	for _, testInfo := range []struct {
+		Args  []string
+		Check func(*zap.Logger, func() string, string)
+	}{
+		{
+			Args: []string{},
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 
-	l, err := New(&Config{
-		Debug:  false,
-		Output: []string{newout.Name()},
-	}, map[string]interface{}{
-		"k1": "v1",
-		"k2": "v2",
-	})
-	require.NoError(t, err)
-	require.NotNil(t, l)
+				l.Debug("message#dbg")
+				checkProdLoggerMessage(t, getOut(), "debug", "message#dbg")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel", zapcore.InfoLevel.String()),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
 
-	l.Info("msg-inf", "val1")
-	l.Error("msg-err", "val1")
-	l.Warn("msg-wrn", "val1")
-	l.Debug("msg-dbg", "val1")
+				l.Info("message#info")
+				checkProdLoggerMessage(t, getOut(), "info", "message#info")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.WarnLevel.String()),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
 
-	_, err = newout.Seek(0, io.SeekStart)
-	require.NoError(t, err)
+				l.Warn("message#warn")
+				checkProdLoggerMessage(t, getOut(), "warn", "message#warn")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.ErrorLevel.String(), "--logtime=iso8601"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
 
-	var count int
-	sc := bufio.NewScanner(newout)
-	for sc.Scan() {
-		m := make(map[string]interface{})
-		r := strings.NewReader(sc.Text())
-		require.NoError(t, json.NewDecoder(r).Decode(&m))
+				l.Error("message#err")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err")
+			},
+		},
+		{
+			Args: append(argsClone[:1], "app", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
 
-		require.Equal(t, "v1", m["k1"])
-		delete(m, "k1")
-		require.Equal(t, "v2", m["k2"])
-		delete(m, "k2")
+				l.Error("message#err/iso8601")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone[:1], "app", "-c", "config.yaml", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
+				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
 
-		require.NotEmpty(t, m["ts"])
-		delete(m, "ts")
+				l.Error("message#err/iso8601")
+				checkProdLoggerMessage(t, getOut(), "error", "message#err/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 
-		switch count {
-		case 0:
-			require.Equal(t,
-				map[string]interface{}{
-					"level":   "info",
-					"caller":  "logger/logger_test.go:40",
-					"msg":     "msg-inf",
-					"payload": `val1`,
-				},
-				m)
-		case 1:
-			require.NotEmpty(t, m["stacktrace"])
-			delete(m, "stacktrace")
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=1"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 
-			require.Equal(t,
-				map[string]interface{}{
-					"level":   "error",
-					"caller":  "logger/logger_test.go:41",
-					"msg":     "msg-err",
-					"payload": `val1`,
-				},
-				m)
-		case 2:
-			require.Equal(t,
-				map[string]interface{}{
-					"level":   "warn",
-					"caller":  "logger/logger_test.go:42",
-					"msg":     "msg-wrn",
-					"payload": `val1`,
-				},
-				m)
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
+			},
+		},
+		{
+			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=True"),
+			Check: func(l *zap.Logger, getOut func() string, desc string) {
+				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 
-		case 3:
-			require.Equal(t,
-				map[string]interface{}{
-					"level":   "debug",
-					"caller":  "logger/logger_test.go:43",
-					"msg":     "msg-dbg",
-					"payload": `val1`,
-				},
-				m)
-
-		default:
-			require.Fail(t, "unknown string")
-		}
-		count++
-	}
-	require.NoError(t, sc.Err())
-}
-
-func TestConvertValues(t *testing.T) {
-
-	for res, src := range map[string][]interface{}{
-		"1":          []interface{}{1},
-		"1.2":        []interface{}{1.2},
-		"err":        []interface{}{errors.New("err")},
-		"{value}":    []interface{}{struct{ Value string }{"value"}},
-		"str":        []interface{}{"str"},
-		"1 true 1.5": []interface{}{1, true, 1.5},
+				l.Debug("message#debug/iso8601")
+				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
+			},
+		},
 	} {
 
-		require.Equal(t,
-			zap.String("payload", res),
-			convertValues(src), res)
+		func() {
+			r, w, err := os.Pipe()
+			require.NoError(t, err)
+
+			stdOut := os.Stdout
+			stdErr := os.Stderr
+
+			os.Stdout = w
+			os.Stderr = w
+
+			defer func() {
+				os.Stdout = stdOut
+				os.Stderr = stdErr
+				os.Args = args
+			}()
+
+			fnGetOut := func() func() string {
+				out := make(chan string, 1)
+
+				go func() {
+					buf := bytes.NewBuffer(nil)
+					_, err := io.Copy(buf, r)
+					require.NoError(t, err)
+					out <- buf.String()
+				}()
+
+				return func() string {
+					require.NoError(t, w.Close())
+					return <-out
+				}
+			}
+
+			desc := strings.Join(testInfo.Args, ",")
+
+			os.Args = testInfo.Args
+			l, err := New()
+			require.NoError(t, err, desc)
+			testInfo.Check(l, fnGetOut(), desc)
+		}()
+
 	}
+}
+
+func TestLoggerInvalidLevelName(t *testing.T) {
+	args := os.Args
+	defer func() { os.Args = args }()
+
+	os.Args = append(args, "--loglevel=warning")
+	l, err := New()
+	require.EqualError(t, err, `logger level (debug, info, warn, error, dpanic, panic, fatal): unrecognized level: "warning"`)
+	require.Nil(t, l)
+}
+
+func checkProdLoggerMessage(t *testing.T, src, level, message string) {
+
+	// source example:
+	// "level":"debug","ts":"2019-10-15T17:21:10.215+0300","caller":"logger/logger_test.go:110","msg":"message#debug/iso8601"}
+
+	msg := map[string]interface{}{}
+	require.NoError(t, json.NewDecoder(bytes.NewReader([]byte(src))).Decode(&msg), src)
+
+	require.Equal(t, level, msg["level"], src)
+	require.Equal(t, message, msg["msg"], src)
+
+	var (
+		ts  time.Time
+		err error
+	)
+	switch v := msg["ts"].(type) {
+	case string:
+		ts, err = time.Parse("2006-01-02T15:04:05.000Z0700", v)
+	case float64:
+		ts = time.Unix(int64(v), 0)
+	default:
+		t.Fatalf("unknown time type %#v", v)
+	}
+
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), ts, time.Second)
+}
+
+func checkDevLoggerMessage(t *testing.T, src, level, message string) {
+
+	// source example:
+	// 2019-10-15T17:22:07.766+0300    DEBUG   logger/logger_test.go:110       message#debug/iso8601
+
+	parts := strings.Split(src, "\t")
+	require.Len(t, parts, 4)
+
+	require.Equal(t, strings.ToUpper(level), parts[1], src)
+	require.Equal(t, message+"\n", parts[3], src)
+
+	ts, err := time.Parse("2006-01-02T15:04:05.000Z0700", parts[0])
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), ts, time.Second)
 }

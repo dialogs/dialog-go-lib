@@ -12,8 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dialogs/dialog-go-lib/logger"
 	pkgerr "github.com/pkg/errors"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 )
 
@@ -60,14 +61,17 @@ func (s *service) GetAddr() (addr string) {
 	return
 }
 
-func (s *service) serve(name, addr string, run func(retval chan<- error), stop func(*logger.Logger)) error {
+func (s *service) serve(name, addr string, run func(retval chan<- error), stop func(*zap.Logger)) error {
 
-	l, err := logger.New(&logger.Config{}, map[string]interface{}{
-		name: addr,
-	})
+	conf := zap.NewProductionConfig()
+	conf.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	conf.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	l, err := conf.Build()
 	if err != nil {
 		return pkgerr.Wrap(err, "logger: "+name)
 	}
+	l = l.With(zap.String(name, addr))
 
 	defer func() {
 		l.Info("the service is done")

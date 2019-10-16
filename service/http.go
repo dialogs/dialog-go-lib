@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dialogs/dialog-go-lib/logger"
+	"go.uber.org/zap"
 )
 
 // A HTTP service
@@ -79,12 +79,12 @@ func (s *HTTP) ListenAndServe() error {
 		}
 	}
 
-	stop := func(l *logger.Logger) {
+	stop := func(l *zap.Logger) {
 		ctx, cancel := context.WithTimeout(context.Background(), s.closeTimeout)
 		defer cancel()
 
 		if err := svr.Shutdown(ctx); err != nil {
-			l.Error("failed to shutdown:", err)
+			l.Error("failed to shutdown", zap.Error(err))
 		}
 	}
 

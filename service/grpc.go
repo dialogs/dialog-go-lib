@@ -3,9 +3,9 @@ package service
 import (
 	"net"
 
-	"github.com/dialogs/dialog-go-lib/logger"
 	pkgerr "github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"go.uber.org/zap"
 )
 
 // A GRPC service
@@ -51,7 +51,7 @@ func (g *GRPC) ListenAndServe() error {
 		retval <- g.svr.Serve(l)
 	}
 
-	stop := func(*logger.Logger) {
+	stop := func(*zap.Logger) {
 		g.svr.GracefulStop()
 	}
 

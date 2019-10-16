@@ -1,89 +1,91 @@
 package logger
 
 import (
-	"fmt"
+	"os"
+	"strings"
 
-	pkgerr "github.com/pkg/errors"
+	"github.com/pkg/errors"
+	flag "github.com/spf13/pflag"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-// Logger wrapper
-type Logger struct {
-	logger  *zap.Logger
-	context []zap.Field
-}
+func New() (*zap.Logger, error) {
 
-// New logger wrapper
-func New(cfg *Config, ctx map[string]interface{}) (*Logger, error) {
+	const (
+		FlagLevel       = "loglevel"
+		FlagTime        = "logtime"
+		FlagDevelopMode = "logdevelop"
+	)
 
-	zapCfg, err := cfg.toZapConfig()
-	if err != nil {
-		return nil, pkgerr.Wrap(err, "logger config")
+	cmdName := getCmdName(os.Args)
+	flagSet := flag.NewFlagSet(cmdName, flag.ErrorHandling(-1)) // -1 - skip error 'not found flag'
+	flagSet.SetOutput(newNopWriter())                           // don't print help information about unknown flags
+	flagSet.ParseErrorsWhitelist.UnknownFlags = true            // skip unknown flags
+
+	flagSet.StringVarP(new(string), FlagLevel, "", "", "logger level (debug, info, warn, error, dpanic, panic, fatal)")
+	flagSet.StringVarP(new(string), FlagTime, "", "", "logger time format (iso8601, millis, nanos)")
+	flagSet.BoolVarP(new(bool), FlagDevelopMode, "", false, "logger develop mode")
+
+	if err := flagSet.ParseAll(os.Args, func(f *flag.Flag, v string) error {
+		return f.Value.Set(strings.TrimSpace(v))
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed to parse logger settings")
 	}
 
-	if len(ctx) > 0 {
-		if zapCfg.InitialFields == nil {
-			zapCfg.InitialFields = map[string]interface{}{}
+	var (
+		level                           = zapcore.DebugLevel
+		timeFormat  zapcore.TimeEncoder = zapcore.EpochTimeEncoder
+		developMode bool
+	)
+
+	{
+		if f := flagSet.Lookup(FlagLevel); f != nil {
+			if v := f.Value.String(); v != "" {
+				if err := level.Set(v); err != nil {
+					return nil, errors.Wrap(err, f.Usage)
+				}
+			}
 		}
 
-		for k, v := range ctx {
-			zapCfg.InitialFields[k] = v
+		if f := flagSet.Lookup(FlagTime); f != nil {
+			if v := f.Value.String(); v != "" {
+				if err := timeFormat.UnmarshalText([]byte(v)); err != nil {
+					return nil, errors.Wrap(err, f.Usage)
+				}
+			}
+		}
+
+		if f := flagSet.Lookup(FlagDevelopMode); f != nil {
+			if f.Value.String() == "true" {
+				developMode = true
+			}
 		}
 	}
 
-	logger, err := zapCfg.Build(zap.AddCallerSkip(2))
+	cfg := zap.NewProductionConfig()
+	if developMode {
+		cfg = zap.NewDevelopmentConfig()
+	}
+
+	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.EncoderConfig.EncodeTime = timeFormat
+
+	l, err := cfg.Build()
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "native logger")
+		return nil, err
 	}
 
-	context := make([]zap.Field, 0, len(ctx))
-
-	return &Logger{
-		logger:  logger,
-		context: context,
-	}, nil
+	return l, nil
 }
 
-// Info logs a message in info level
-func (l *Logger) Info(msg string, value ...interface{}) {
-	l.invoke(l.logger.Info, msg, value)
-}
+func getCmdName(args []string) (cmdName string) {
 
-// Error logs a message in error level
-func (l *Logger) Error(msg string, value ...interface{}) {
-	l.invoke(l.logger.Error, msg, value)
-}
-
-// Debug logs a message in debug level
-func (l *Logger) Debug(msg string, value ...interface{}) {
-	l.invoke(l.logger.Debug, msg, value)
-}
-
-// Warn logs a message in warning level
-func (l *Logger) Warn(msg string, value ...interface{}) {
-	l.invoke(l.logger.Warn, msg, value)
-}
-
-// Fatal logs a message in fatal level
-func (l *Logger) Fatal(msg string, value ...interface{}) {
-	l.invoke(l.logger.Fatal, msg, value)
-}
-
-func (l *Logger) invoke(fn func(string, ...zap.Field), msg string, value []interface{}) {
-	if len(value) == 0 {
-		fn(msg)
-	} else {
-		fn(msg, convertValues(value))
-	}
-}
-
-func convertValues(src []interface{}) zap.Field {
-
-	// TODO: convert to zap types
-	val := fmt.Sprintln(src...)
-	if len(val) > 0 {
-		val = val[:len(val)-1] // remove '\n'
+	if len(args) > 1 {
+		if v := args[1]; len(v) > 0 && v[0] != '-' {
+			cmdName = v
+		}
 	}
 
-	return zap.String("payload", val)
+	return
 }
