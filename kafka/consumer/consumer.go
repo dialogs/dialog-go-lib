@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, consumer  *kafka.Consumer) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
@@ -336,7 +336,7 @@ func (c *Consumer) handleMessage(e *kafka.Message, consumerOffsets *offset) erro
 		return err
 	}
 
-	if err := c.onProcess(c.ctx, opLog, e); err != nil {
+	if err := c.onProcess(c.ctx, opLog, e, c.reader); err != nil {
 		opLog.Error("failed to process message", zap.Error(err))
 		return err
 	}

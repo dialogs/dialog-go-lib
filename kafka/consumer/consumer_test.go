@@ -26,7 +26,7 @@ func TestConsumerNew(t *testing.T) {
 		CommitOffsetCount:    1,
 		CommitOffsetDuration: time.Hour,
 		OnError:              func(context.Context, *zap.Logger, error) {},
-		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message) error { return nil },
+		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message, *kafka.Consumer) error { return nil },
 		Topics:               []string{"a"},
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":          "group-id",
@@ -61,7 +61,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -96,7 +96,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -160,7 +160,7 @@ func TestConsumerRebalance(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -208,7 +208,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -241,7 +241,7 @@ func TestConsumerRevokePartition(t *testing.T) {
 		chErrors <- err
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -315,7 +315,7 @@ func TestConsumerCommit(t *testing.T) {
 		}
 
 		chMsg := make(chan *kafka.Message, countMessages)
-		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
 			if msg == nil {
 				return errors.New("invalid message")
 			}
