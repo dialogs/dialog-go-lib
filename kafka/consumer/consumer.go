@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, consumer  *kafka.Consumer) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, delay DelayI) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
@@ -28,6 +28,7 @@ var (
 type Consumer struct {
 	observable
 
+	delay                DelayI
 	id                   uuid.UUID
 	commitOffsetCount    int
 	commitOffsetDuration time.Duration
@@ -114,6 +115,7 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
 		observable:           *newObservable(),
+		delay:                NewDelay(reader),
 	}, nil
 }
 
@@ -336,7 +338,7 @@ func (c *Consumer) handleMessage(e *kafka.Message, consumerOffsets *offset) erro
 		return err
 	}
 
-	if err := c.onProcess(c.ctx, opLog, e, c.reader); err != nil {
+	if err := c.onProcess(c.ctx, opLog, e, c.delay); err != nil {
 		opLog.Error("failed to process message", zap.Error(err))
 		return err
 	}

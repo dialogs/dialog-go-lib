@@ -29,7 +29,7 @@ func TestGroup(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, CountMessages)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
 		chMsg <- msg
 		return nil
 	}
@@ -113,7 +113,7 @@ func TestGroupGracefulShutdown(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, CountMessages)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c *kafka.Consumer) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
 		chMsg <- msg
 		return nil
 	}
