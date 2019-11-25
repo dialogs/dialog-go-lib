@@ -47,17 +47,10 @@ func (d Delay) DelayConsumer(sleep time.Duration) error {
 			return err
 		}
 		err = d.consumer.Resume(partitions)
+		if err != nil {
+			return err
+		}
 	}
 
-	//if d.consumer != nil {
-	//	partitions, err = d.consumer.Assignment()
-	//	if err != nil {
-	//		return err
-	//	}
-	//	err = d.consumer.Resume(partitions)
-	//	if err != nil {
-	//		return err
-	//	}
-	//}
 	return nil
 }

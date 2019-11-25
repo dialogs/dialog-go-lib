@@ -159,7 +159,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	delayDuration := 60 * time.Second
+	delayDuration := 10 * time.Second
 	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d DelayI) error {
 		if msg == nil {
 			return errors.New("invalid message")
@@ -175,7 +175,6 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 		require.Equal(t, Topic, topic)
 		require.True(t, partition >= 0)
 		require.True(t, offset >= 0)
-		require.Equal(t, 1, count)
 	}
 
 	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
@@ -208,8 +207,8 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	res := <-chMsg
 
 	timeFirstMessage := time.Now()
-	time.Sleep(1 * time.Second)
 
+	//TODO: merge with 1st produce
 	{
 		deliveryChan := make(chan kafka.Event)
 		require.NoError(t, p.Produce(
@@ -237,8 +236,10 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	case <-chMsg:
 		//continue
 	}
-	diff := time.Now().Sub(timeFirstMessage)
+	diff := time.Since(timeFirstMessage)
 	require.True(t, diff > delayDuration, "diff = %v\n", diff)
+	eps := time.Second
+	require.True(t, diff < delayDuration+eps, "diff = %v\n", diff)
 	c1.logger.Info("read message")
 
 	require.Equal(t, &Topic, res.TopicPartition.Topic)
