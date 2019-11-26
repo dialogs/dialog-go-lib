@@ -11,6 +11,7 @@ import (
 
 type DelayI interface {
 	DelayConsumer() error
+	GetDelay() time.Duration
 }
 
 type Delay struct {
@@ -55,4 +56,8 @@ func (d Delay) DelayConsumer() error {
 	}
 
 	return nil
+}
+
+func (d Delay) GetDelay() time.Duration {
+	return d.delay
 }
