@@ -74,7 +74,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
+	c := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil, 0)
 	go func() { require.NoError(t, c.Start()) }()
 	defer c.Stop()
 
@@ -111,7 +111,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 		require.Equal(t, 1, count)
 	}
 
-	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil, 0)
 	defer c1.Stop()
 
 	go func() { require.NoError(t, c1.Start()) }()
@@ -165,7 +165,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 			return errors.New("invalid message")
 		}
 		go func(t *testing.T, d DelayI) {
-			require.NoError(t, d.DelayConsumer(delayDuration))
+			require.NoError(t, d.DelayConsumer())
 		}(t, d)
 		chMsg <- msg
 		return nil
@@ -177,7 +177,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil, delayDuration)
 	defer c1.Stop()
 
 	go func() { require.NoError(t, c1.Start()) }()
@@ -208,7 +208,6 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 
 	timeFirstMessage := time.Now()
 
-	//TODO: merge with 1st produce
 	{
 		deliveryChan := make(chan kafka.Event)
 		require.NoError(t, p.Produce(
@@ -245,8 +244,6 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	require.Equal(t, &Topic, res.TopicPartition.Topic)
 	require.Equal(t, int32(0), res.TopicPartition.Partition)
 	require.Equal(t, []byte(Topic), res.Value)
-
-	//time.Sleep(delayDuration + 5*time.Second)
 }
 
 func TestConsumerRebalance(t *testing.T) {
@@ -282,11 +279,11 @@ func TestConsumerRebalance(t *testing.T) {
 		chRebalance <- len(topics)
 	}
 
-	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance, 0)
 	defer c1.Stop()
 	go func() { require.NoError(t, c1.Start()) }()
 
-	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
+	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance, 0)
 	defer c2.Stop()
 	go func() { require.NoError(t, c2.Start()) }()
 
@@ -323,7 +320,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		require.True(t, offset >= 0)
 	}
 
-	c1 := newConsumer(t, []string{""}, nil, onError, onProcess, onCommit, nil, nil)
+	c1 := newConsumer(t, []string{""}, nil, onError, onProcess, onCommit, nil, nil, 0)
 	defer c1.Stop()
 
 	require.EqualError(t, c1.Start(), "subscribe to topics failed: Local: Invalid argument or configuration")
@@ -362,12 +359,12 @@ func TestConsumerRevokePartition(t *testing.T) {
 		chRebalance <- len(topics)
 	}
 
-	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance, 0)
 	defer c1.Stop()
 
 	go func() { require.NoError(t, c1.Start()) }()
 
-	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance)
+	c2 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, onRebalance, onRebalance, 0)
 	defer c2.Stop()
 
 	go func() { require.NoError(t, c2.Start()) }()
@@ -437,7 +434,7 @@ func TestConsumerCommit(t *testing.T) {
 		}
 
 		return func() *Consumer {
-				return newConsumer(t, topicList, props, onError, onProcess, onCommit, onRebalance, onRebalance)
+				return newConsumer(t, topicList, props, onError, onProcess, onCommit, onRebalance, onRebalance, 0)
 			},
 			chMsg,
 			chRebalance
@@ -602,12 +599,12 @@ func invokeCommitTest(t *testing.T, turnOnRebalance bool, countConsumers, countM
 	}
 }
 
-func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance) *Consumer {
+func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance, delay time.Duration) *Consumer {
 	t.Helper()
 
 	zapLogger := newLogger(t)
 
-	cfg := newConsumerConfig(topicList, props, onError, onProcess, onCommit, onRevoke, onRebalance)
+	cfg := newConsumerConfig(topicList, props, onError, onProcess, onCommit, onRevoke, onRebalance, delay)
 
 	c, err := New(cfg, zapLogger)
 	require.NoError(t, err)
@@ -615,7 +612,7 @@ func newConsumer(t *testing.T, topicList []string, props kafka.ConfigMap, onErro
 	return c
 }
 
-func newConsumerConfig(topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance) *Config {
+func newConsumerConfig(topicList []string, props kafka.ConfigMap, onError FuncOnError, onProcess FuncOnProcess, onCommit FuncOnCommit, onRevoke FuncOnRevoke, onRebalance FuncOnRebalance, delay time.Duration) *Config {
 
 	cfg := &Config{
 		OnError:           onError,
@@ -631,6 +628,7 @@ func newConsumerConfig(topicList []string, props kafka.ConfigMap, onError FuncOn
 			"auto.offset.reset":  "earliest",
 			"session.timeout.ms": 6000,
 		},
+		Delay: delay,
 	}
 
 	if len(props) > 0 {

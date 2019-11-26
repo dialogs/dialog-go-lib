@@ -10,24 +10,26 @@ import (
 )
 
 type DelayI interface {
-	DelayConsumer(sec time.Duration) error
+	DelayConsumer() error
 }
 
 type Delay struct {
 	consumer *kafka.Consumer
 	ctx      context.Context
 	logger   *zap.Logger
+	delay    time.Duration
 }
 
-func NewDelay(ctx context.Context, consumer *kafka.Consumer, l *zap.Logger) Delay {
+func NewDelay(ctx context.Context, consumer *kafka.Consumer, l *zap.Logger, delay time.Duration) Delay {
 	return Delay{
 		consumer: consumer,
 		ctx:      ctx,
 		logger:   l,
+		delay:    delay,
 	}
 }
 
-func (d Delay) DelayConsumer(sleep time.Duration) error {
+func (d Delay) DelayConsumer() error {
 	partitions, err := d.consumer.Assignment()
 	if err != nil {
 		return err
@@ -36,10 +38,10 @@ func (d Delay) DelayConsumer(sleep time.Duration) error {
 	if err != nil {
 		return err
 	}
-	time.Sleep(sleep)
+	time.Sleep(d.delay)
 	select {
 	case <-d.ctx.Done():
-		d.logger.Info("service already stopped")
+		d.logger.Warn("service already stopped")
 		return nil
 	default:
 		partitions, err = d.consumer.Assignment()

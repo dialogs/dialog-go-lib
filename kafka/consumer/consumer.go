@@ -115,7 +115,7 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
 		observable:           *newObservable(),
-		delay:                NewDelay(ctx, reader, logger),
+		delay:                NewDelay(ctx, reader, logger, cfg.Delay),
 	}, nil
 }
 
