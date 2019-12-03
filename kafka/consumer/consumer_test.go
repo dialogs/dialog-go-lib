@@ -143,8 +143,6 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	require.Equal(t, &Topic, res.TopicPartition.Topic)
 	require.Equal(t, int32(0), res.TopicPartition.Partition)
 	require.Equal(t, []byte(Topic), res.Value)
-
-	//c1.Stop()
 }
 
 func TestConsumerReadMessagesWithDelay(t *testing.T) {
@@ -184,7 +182,8 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 
 	p := newProducer(t, Topic)
 	defer p.Close()
-	{
+
+	produceMessage := func(t *testing.T) {
 		deliveryChan := make(chan kafka.Event)
 		require.NoError(t, p.Produce(
 			&kafka.Message{
@@ -202,32 +201,15 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 		require.True(t, ok, "%#v", event)
 		require.NoError(t, eventMessage.TopicPartition.Error, "%#v", event)
 	}
+
+	produceMessage(t)
 
 	c1.logger.Info("wait message")
 	res := <-chMsg
 
 	timeFirstMessage := time.Now()
 
-	{
-		deliveryChan := make(chan kafka.Event)
-		require.NoError(t, p.Produce(
-			&kafka.Message{
-				TopicPartition: kafka.TopicPartition{
-					Topic:     &Topic,
-					Partition: kafka.PartitionAny,
-				},
-				Value: []byte(Topic),
-			},
-			deliveryChan))
-		require.Equal(t, 1, p.Flush(1))
-
-		event := <-deliveryChan
-		eventMessage, ok := event.(*kafka.Message)
-		require.True(t, ok, "%#v", event)
-		require.NoError(t, eventMessage.TopicPartition.Error, "%#v", event)
-		require.True(t, ok, "%#v", event)
-		require.NoError(t, eventMessage.TopicPartition.Error, "%#v", event)
-	}
+	produceMessage(t)
 
 	select {
 	case <-c1.ctx.Done():
@@ -237,7 +219,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	}
 	diff := time.Since(timeFirstMessage)
 	require.True(t, diff > delayDuration, "diff = %v\n", diff)
-	eps := time.Second
+	eps := 2 * time.Second
 	require.True(t, diff < delayDuration+eps, "diff = %v\n", diff)
 	c1.logger.Info("read message")
 
