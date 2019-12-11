@@ -31,9 +31,6 @@ func NewDelay(ctx context.Context, consumer *kafka.Consumer, l *zap.Logger, dela
 }
 
 func (d Delay) DelayConsumer() error {
-	if d.delay < time.Second {
-		return nil
-	}
 	partitions, err := d.consumer.Assignment()
 	if err != nil {
 		return err
@@ -42,7 +39,7 @@ func (d Delay) DelayConsumer() error {
 	if err != nil {
 		return err
 	}
-	time.Sleep(d.delay - time.Second)
+	time.Sleep(d.delay)
 	select {
 	case <-d.ctx.Done():
 		d.logger.Warn("service already stopped")
