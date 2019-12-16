@@ -162,15 +162,18 @@ func (c *Consumer) Stop() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) Delay(delay time.Duration) error {
+func (c *Consumer) Delay(delay time.Duration, partitions []kafka.TopicPartition) error {
 	if delay <= time.Second {
 		return nil
 	}
-	partitions, err := c.reader.Assignment()
-	if err != nil {
-		return err
+	if len(partitions) == 0 {
+		p, err := c.reader.Assignment()
+		if err != nil {
+			return err
+		}
+		partitions = p
 	}
-	err = c.reader.Pause(partitions)
+	err := c.reader.Pause(partitions)
 	if err != nil {
 		return err
 	}
@@ -180,10 +183,6 @@ func (c *Consumer) Delay(delay time.Duration) error {
 		c.logger.Warn("service already stopped")
 		return nil
 	default:
-		partitions, err = c.reader.Assignment()
-		if err != nil {
-			return err
-		}
 		err = c.reader.Resume(partitions)
 		if err != nil {
 			return err

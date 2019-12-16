@@ -163,7 +163,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 			return errors.New("invalid message")
 		}
 		go func(t *testing.T, d ConsumerI) {
-			require.NoError(t, d.Delay(delayDuration))
+			require.NoError(t, d.Delay(delayDuration, []kafka.TopicPartition{msg.TopicPartition}))
 		}(t, d)
 		chMsg <- msg
 		return nil
