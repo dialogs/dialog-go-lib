@@ -163,15 +163,8 @@ func (c *Consumer) Stop() {
 }
 
 func (c *Consumer) Delay(delay time.Duration, partitions []kafka.TopicPartition) error {
-	if delay <= time.Second {
-		return nil
-	}
 	if len(partitions) == 0 {
-		p, err := c.reader.Assignment()
-		if err != nil {
-			return err
-		}
-		partitions = p
+		return nil
 	}
 	err := c.reader.Pause(partitions)
 	if err != nil {
