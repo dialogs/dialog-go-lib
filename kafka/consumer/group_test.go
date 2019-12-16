@@ -36,7 +36,7 @@ func TestGroup(t *testing.T) {
 
 	cfg := GroupConfig{
 		Workers: CountPartitions,
-		Config:  newConsumerConfig([]string{Topic}, nil, onError, onProcess, nil, nil, nil, 0),
+		Config:  newConsumerConfig([]string{Topic}, nil, onError, onProcess, nil, nil, nil),
 	}
 
 	l := newLogger(t)
@@ -120,7 +120,7 @@ func TestGroupGracefulShutdown(t *testing.T) {
 
 	cfg := GroupConfig{
 		Workers: CountPartitions,
-		Config:  newConsumerConfig([]string{Topic}, nil, onError, onProcess, nil, nil, nil, 0),
+		Config:  newConsumerConfig([]string{Topic}, nil, onError, onProcess, nil, nil, nil),
 	}
 
 	l := newLogger(t)

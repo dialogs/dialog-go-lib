@@ -170,7 +170,8 @@ func (c *Consumer) Delay(delay time.Duration, partitions []kafka.TopicPartition)
 	if err != nil {
 		return err
 	}
-	time.Sleep(delay - delay/10)
+	pauseResumeEps := 50 * time.Millisecond
+	time.Sleep(delay - pauseResumeEps)
 	select {
 	case <-c.ctx.Done():
 		c.logger.Warn("service already stopped")
