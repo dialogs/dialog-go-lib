@@ -28,14 +28,14 @@ func TestConfigCheck(t *testing.T) {
 	require.EqualError(t,
 		(&Config{
 			OnError:   func(context.Context, *zap.Logger, error) {},
-			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, DelayI) error { return nil },
+			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, ConsumerI) error { return nil },
 		}).Check(),
 		"topics is empty")
 
 	require.EqualError(t,
 		(&Config{
 			OnError:   func(context.Context, *zap.Logger, error) {},
-			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, DelayI) error { return nil },
+			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, ConsumerI) error { return nil },
 			Topics:    []string{"a"},
 		}).Check(),
 		"reader config is nil")
@@ -43,7 +43,7 @@ func TestConfigCheck(t *testing.T) {
 	require.NoError(t,
 		(&Config{
 			OnError:   func(context.Context, *zap.Logger, error) {},
-			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, DelayI) error { return nil },
+			OnProcess: func(context.Context, *zap.Logger, *kafka.Message, ConsumerI) error { return nil },
 			Topics:    []string{"a"},
 			ConfigMap: &kafka.ConfigMap{"bootstrap.servers": "b1,b2,b3"},
 		}).Check())

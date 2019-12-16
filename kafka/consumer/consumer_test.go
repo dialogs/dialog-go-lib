@@ -26,7 +26,7 @@ func TestConsumerNew(t *testing.T) {
 		CommitOffsetCount:    1,
 		CommitOffsetDuration: time.Hour,
 		OnError:              func(context.Context, *zap.Logger, error) {},
-		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message, DelayI) error { return nil },
+		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message, ConsumerI) error { return nil },
 		Topics:               []string{"a"},
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":          "group-id",
@@ -61,7 +61,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -96,7 +96,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -158,12 +158,12 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 
 	chMsg := make(chan *kafka.Message, 2)
 	delayDuration := 10 * time.Second
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
-		go func(t *testing.T, d DelayI) {
-			require.NoError(t, d.DelayConsumer(delayDuration))
+		go func(t *testing.T, d ConsumerI) {
+			require.NoError(t, d.Delay(delayDuration))
 		}(t, d)
 		chMsg <- msg
 		return nil
@@ -241,7 +241,7 @@ func TestConsumerRebalance(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -289,7 +289,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -322,7 +322,7 @@ func TestConsumerRevokePartition(t *testing.T) {
 		chErrors <- err
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -396,7 +396,7 @@ func TestConsumerCommit(t *testing.T) {
 		}
 
 		chMsg := make(chan *kafka.Message, countMessages)
-		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c DelayI) error {
+		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 			if msg == nil {
 				return errors.New("invalid message")
 			}
@@ -610,7 +610,6 @@ func newConsumerConfig(topicList []string, props kafka.ConfigMap, onError FuncOn
 			"auto.offset.reset":  "earliest",
 			"session.timeout.ms": 6000,
 		},
-		Delay: delay,
 	}
 
 	if len(props) > 0 {

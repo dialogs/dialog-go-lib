@@ -17,7 +17,6 @@ type Config struct {
 	OnRevoke             FuncOnRevoke
 	OnRebalance          FuncOnRebalance
 	Topics               []string
-	Delay                time.Duration
 }
 
 func NewConfig() *Config {

@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, delay DelayI) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, delay ConsumerI) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
@@ -28,7 +28,6 @@ var (
 type Consumer struct {
 	observable
 
-	//delay                DelayI
 	id                   uuid.UUID
 	commitOffsetCount    int
 	commitOffsetDuration time.Duration
@@ -115,7 +114,6 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
 		observable:           *newObservable(),
-		//delay:                NewDelay(ctx, reader, logger, cfg.Delay),
 	}, nil
 }
 
@@ -164,7 +162,7 @@ func (c *Consumer) Stop() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) DelayConsumer(delay time.Duration) error {
+func (c *Consumer) Delay(delay time.Duration) error {
 	if delay <= time.Second {
 		return nil
 	}
