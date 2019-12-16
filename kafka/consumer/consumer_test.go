@@ -163,7 +163,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 			return errors.New("invalid message")
 		}
 		go func(t *testing.T, d DelayI) {
-			require.NoError(t, d.DelayConsumer())
+			require.NoError(t, d.DelayConsumer(delayDuration))
 		}(t, d)
 		chMsg <- msg
 		return nil
@@ -218,8 +218,8 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 		//continue
 	}
 	diff := time.Since(timeFirstMessage)
-	require.True(t, diff > delayDuration, "diff = %v\n", diff)
 	eps := 2 * time.Second
+	require.True(t, diff > delayDuration-eps, "diff = %v\n", diff)
 	require.True(t, diff < delayDuration+eps, "diff = %v\n", diff)
 	c1.logger.Info("read message")
 

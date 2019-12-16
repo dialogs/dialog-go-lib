@@ -28,7 +28,7 @@ var (
 type Consumer struct {
 	observable
 
-	delay                DelayI
+	//delay                DelayI
 	id                   uuid.UUID
 	commitOffsetCount    int
 	commitOffsetDuration time.Duration
@@ -115,7 +115,7 @@ func New(cfg *Config, logger *zap.Logger) (*Consumer, error) {
 		commitOffsetCount:    cfg.CommitOffsetCount,
 		commitOffsetDuration: cfg.CommitOffsetDuration,
 		observable:           *newObservable(),
-		delay:                NewDelay(ctx, reader, logger, cfg.Delay),
+		//delay:                NewDelay(ctx, reader, logger, cfg.Delay),
 	}, nil
 }
 
@@ -162,6 +162,37 @@ func (c *Consumer) Stop() {
 	defer c.mu.Unlock()
 
 	c.wg.Wait()
+}
+
+func (c *Consumer) DelayConsumer(delay time.Duration) error {
+	if delay <= time.Second {
+		return nil
+	}
+	partitions, err := c.reader.Assignment()
+	if err != nil {
+		return err
+	}
+	err = c.reader.Pause(partitions)
+	if err != nil {
+		return err
+	}
+	time.Sleep(delay - time.Second)
+	select {
+	case <-c.ctx.Done():
+		c.logger.Warn("service already stopped")
+		return nil
+	default:
+		partitions, err = c.reader.Assignment()
+		if err != nil {
+			return err
+		}
+		err = c.reader.Resume(partitions)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *Consumer) listen() error {
@@ -338,7 +369,7 @@ func (c *Consumer) handleMessage(e *kafka.Message, consumerOffsets *offset) erro
 		return err
 	}
 
-	if err := c.onProcess(c.ctx, opLog, e, c.delay); err != nil {
+	if err := c.onProcess(c.ctx, opLog, e, c); err != nil {
 		opLog.Error("failed to process message", zap.Error(err))
 		return err
 	}
