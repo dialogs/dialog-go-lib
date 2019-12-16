@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, delay ConsumerI) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, c ConsumerI) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)

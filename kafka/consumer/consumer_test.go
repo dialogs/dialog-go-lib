@@ -96,7 +96,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d ConsumerI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -158,13 +158,13 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 
 	chMsg := make(chan *kafka.Message, 2)
 	delayDuration := 10 * time.Second
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d ConsumerI) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ConsumerI) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
-		go func(t *testing.T, d ConsumerI) {
-			require.NoError(t, d.Delay(delayDuration, []kafka.TopicPartition{msg.TopicPartition}))
-		}(t, d)
+		go func(t *testing.T, c ConsumerI) {
+			require.NoError(t, c.Delay(delayDuration, []kafka.TopicPartition{msg.TopicPartition}))
+		}(t, c)
 		chMsg <- msg
 		return nil
 	}
