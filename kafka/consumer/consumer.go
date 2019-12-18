@@ -186,7 +186,10 @@ func (c *Consumer) Sleep(delay time.Duration, partitions []kafka.TopicPartition)
 			for _, partition := range partitions {
 				_, err = c.reader.GetMetadata(partition.Topic, false, 2000)
 				if err != nil {
-					c.logger.Warn("may be partition haven't been resumed", zap.Error(err))
+					c.logger.With(
+						zap.String("topic", *partition.Topic),
+						zap.Int32("partition", partition.Partition),
+					).Warn("may be partition haven't been resumed", zap.Error(err))
 				}
 			}
 		}
