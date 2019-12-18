@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"strconv"
 	"sync"
 	"testing"
@@ -226,16 +225,12 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 			require.Equal(t, &Topic, res.TopicPartition.Topic)
 			c, err := strconv.Atoi(string(res.Value))
 			require.NoError(t, err)
-			createdTime := int64(c)
-			var eps = 5 * int64(math.Pow10(8))
+			createdTime := time.Unix(0, int64(c))
+			var eps = 500 * time.Millisecond
 			if i == 0 {
-				diff := time.Now().UnixNano() - createdTime
-				require.Greater(t, eps, diff, "now = %v, createdAt =%v\n", time.Now().UnixNano(), createdTime)
+				require.WithinDuration(t, time.Now(), createdTime, eps)
 			} else {
-				delay := delayDuration.Nanoseconds()
-				diff := time.Now().UnixNano() - createdTime
-				require.Greater(t, diff, delay-eps, "now = %v, createdAt =%v\n", time.Now().UnixNano(), createdTime)
-				require.Greater(t, delay+eps, diff, "now = %v, createdAt =%v\n", time.Now().UnixNano(), createdTime)
+				require.WithinDuration(t, time.Now(), createdTime.Add(delayDuration), eps)
 			}
 		}
 	}
