@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, c ConsumerI) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, s ISleeper) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
@@ -162,7 +162,7 @@ func (c *Consumer) Stop() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) Delay(delay time.Duration, partitions []kafka.TopicPartition) error {
+func (c *Consumer) Sleep(delay time.Duration, partitions []kafka.TopicPartition) error {
 	if len(partitions) == 0 {
 		return nil
 	}
@@ -170,24 +170,32 @@ func (c *Consumer) Delay(delay time.Duration, partitions []kafka.TopicPartition)
 	if err != nil {
 		return err
 	}
-	pauseResumeEps := 50 * time.Millisecond
-	time.Sleep(delay - pauseResumeEps)
-	select {
-	case <-c.ctx.Done():
-		c.logger.Warn("service already stopped")
-		return nil
-	default:
-		err = c.reader.Resume(partitions)
-		if err != nil {
-			return err
+
+	go func() {
+		time.Sleep(delay)
+		select {
+		case <-c.ctx.Done():
+			c.logger.Warn("service already stopped")
+		default:
+			err := c.reader.Resume(partitions)
+			if err != nil {
+				c.logger.Error("failed to resume consumer", zap.Error(err))
+			}
+
+			//Resume doesn't return error if broker is unavailable, that's why we try to get metadata
+			for _, partition := range partitions {
+				_, err = c.reader.GetMetadata(partition.Topic, false, 2000)
+				if err != nil {
+					c.logger.Warn("may be partition haven't been resumed", zap.Error(err))
+				}
+			}
 		}
-	}
+	}()
 
 	return nil
 }
 
 func (c *Consumer) listen() error {
-
 	c.logger.Info("start listener")
 	err := c.reader.SubscribeTopics(c.topics, nil)
 	if err != nil {
@@ -196,6 +204,7 @@ func (c *Consumer) listen() error {
 
 	defer func() {
 		defer c.logger.Info("done")
+		c.ctxCancel()
 
 		c.logger.Info("closing...")
 		// logs for issues:

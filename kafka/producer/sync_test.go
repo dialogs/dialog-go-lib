@@ -26,7 +26,7 @@ func TestSync(t *testing.T) {
 		OnError: func(_ context.Context, _ *zap.Logger, err error) {
 			require.NoError(t, err)
 		},
-		OnProcess: func(_ context.Context, _ *zap.Logger, msg *kafka.Message, d consumer.ConsumerI) error {
+		OnProcess: func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ consumer.ISleeper) error {
 			chMessages <- msg
 			return nil
 		},
