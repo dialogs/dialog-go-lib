@@ -212,7 +212,6 @@ func (c *Consumer) listen() error {
 
 	defer func() {
 		defer c.logger.Info("done")
-		c.ctxCancel()
 
 		c.logger.Info("closing...")
 		// logs for issues:
