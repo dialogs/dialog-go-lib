@@ -209,7 +209,7 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	case <-c1.ctx.Done():
 		require.Fail(t, "service shouldn't be closed")
 	case <-chMsg:
-		//skipping first message
+		//skipping first message, it makes us sure that producer is ready
 	}
 
 	const messageCount = 3
@@ -218,7 +218,6 @@ func TestConsumerReadMessagesWithDelay(t *testing.T) {
 	}
 	for i := 0; i < messageCount; i++ {
 		select {
-		//continue
 		case <-c1.ctx.Done():
 			require.Fail(t, "service shouldn't be closed")
 		case res := <-chMsg:

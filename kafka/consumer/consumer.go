@@ -168,6 +168,9 @@ func (c *Consumer) Sleep(delay time.Duration, partitions []kafka.TopicPartition)
 	}
 	err := c.reader.Pause(partitions)
 	if err != nil {
+		c.logger.With(
+			zap.Any("partitions", partitions),
+		).Warn("failed to pause consumer", zap.Error(err))
 		return err
 	}
 
@@ -179,7 +182,9 @@ func (c *Consumer) Sleep(delay time.Duration, partitions []kafka.TopicPartition)
 		default:
 			err := c.reader.Resume(partitions)
 			if err != nil {
-				c.logger.Error("failed to resume consumer", zap.Error(err))
+				c.logger.With(
+					zap.Any("partitions", partitions),
+				).Warn("failed to resume consumer", zap.Error(err))
 			}
 
 			//Resume doesn't return error if broker is unavailable, that's why we try to get metadata
