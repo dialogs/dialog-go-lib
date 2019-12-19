@@ -15,11 +15,6 @@ import (
 )
 
 func TestLoggerNew(t *testing.T) {
-	args := os.Args
-	defer func() { os.Args = args }()
-
-	argsClone := make([]string, len(args))
-	copy(argsClone, args)
 
 	for _, testInfo := range []struct {
 		Args  []string
@@ -35,7 +30,7 @@ func TestLoggerNew(t *testing.T) {
 			},
 		},
 		{
-			Args: append(argsClone, "--loglevel", zapcore.InfoLevel.String()),
+			Args: []string{_EnvLevel, zapcore.InfoLevel.String()},
 			Check: func(l *zap.Logger, getOut func() string, desc string) {
 				require.False(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 				require.True(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
@@ -45,7 +40,7 @@ func TestLoggerNew(t *testing.T) {
 			},
 		},
 		{
-			Args: append(argsClone, "--loglevel="+zapcore.WarnLevel.String()),
+			Args: []string{_EnvLevel, zapcore.WarnLevel.String()},
 			Check: func(l *zap.Logger, getOut func() string, desc string) {
 				require.False(t, l.Core().Enabled(zapcore.InfoLevel), desc, strings.Join(os.Args, " "))
 				require.True(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
@@ -55,7 +50,7 @@ func TestLoggerNew(t *testing.T) {
 			},
 		},
 		{
-			Args: append(argsClone, "--loglevel="+zapcore.ErrorLevel.String(), "--logtime=iso8601"),
+			Args: []string{_EnvLevel, zapcore.ErrorLevel.String(), _EnvTime, "iso8601"},
 			Check: func(l *zap.Logger, getOut func() string, desc string) {
 				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
 				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
@@ -65,7 +60,7 @@ func TestLoggerNew(t *testing.T) {
 			},
 		},
 		{
-			Args: append(argsClone[:1], "app", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
+			Args: []string{_EnvLevel, zapcore.ErrorLevel.String(), _EnvTime, "iso8601"},
 			Check: func(l *zap.Logger, getOut func() string, desc string) {
 				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
 				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
@@ -75,35 +70,7 @@ func TestLoggerNew(t *testing.T) {
 			},
 		},
 		{
-			Args: append(argsClone[:1], "app", "-c", "config.yaml", "--loglevel="+zapcore.ErrorLevel.String(), "--logtime", "iso8601"),
-			Check: func(l *zap.Logger, getOut func() string, desc string) {
-				require.False(t, l.Core().Enabled(zapcore.WarnLevel), desc, strings.Join(os.Args, " "))
-				require.True(t, l.Core().Enabled(zapcore.ErrorLevel), desc, strings.Join(os.Args, " "))
-
-				l.Error("message#err/iso8601")
-				checkProdLoggerMessage(t, getOut(), "error", "message#err/iso8601")
-			},
-		},
-		{
-			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop"),
-			Check: func(l *zap.Logger, getOut func() string, desc string) {
-				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
-
-				l.Debug("message#debug/iso8601")
-				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
-			},
-		},
-		{
-			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=1"),
-			Check: func(l *zap.Logger, getOut func() string, desc string) {
-				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
-
-				l.Debug("message#debug/iso8601")
-				checkDevLoggerMessage(t, getOut(), "debug", "message#debug/iso8601")
-			},
-		},
-		{
-			Args: append(argsClone, "--loglevel="+zapcore.DebugLevel.String(), "--logtime", "iso8601", "--logdevelop=True"),
+			Args: []string{_EnvLevel, zapcore.DebugLevel.String(), _EnvTime, "iso8601", _EnvMode, "1"},
 			Check: func(l *zap.Logger, getOut func() string, desc string) {
 				require.True(t, l.Core().Enabled(zapcore.DebugLevel), desc, strings.Join(os.Args, " "))
 
@@ -114,6 +81,25 @@ func TestLoggerNew(t *testing.T) {
 	} {
 
 		func() {
+			if len(testInfo.Args)%2 != 0 {
+				t.Fatalf("invalid arguments list %v", testInfo.Args)
+			}
+
+			envNames := make([]string, 0)
+			for i := 0; i < len(testInfo.Args); i += 2 {
+				name := testInfo.Args[i]
+				value := testInfo.Args[i+1]
+
+				envNames = append(envNames, name)
+				os.Setenv(name, value)
+			}
+
+			defer func() {
+				for _, name := range envNames {
+					os.Unsetenv(name)
+				}
+			}()
+
 			r, w, err := os.Pipe()
 			require.NoError(t, err)
 
@@ -126,7 +112,6 @@ func TestLoggerNew(t *testing.T) {
 			defer func() {
 				os.Stdout = stdOut
 				os.Stderr = stdErr
-				os.Args = args
 			}()
 
 			fnGetOut := func() func() string {
@@ -147,7 +132,6 @@ func TestLoggerNew(t *testing.T) {
 
 			desc := strings.Join(testInfo.Args, ",")
 
-			os.Args = testInfo.Args
 			l, err := New()
 			require.NoError(t, err, desc)
 			testInfo.Check(l, fnGetOut(), desc)
@@ -157,10 +141,10 @@ func TestLoggerNew(t *testing.T) {
 }
 
 func TestLoggerInvalidLevelName(t *testing.T) {
-	args := os.Args
-	defer func() { os.Args = args }()
 
-	os.Args = append(args, "--loglevel=warning")
+	os.Setenv(_EnvLevel, "warning")
+	defer func() { os.Unsetenv(_EnvLevel) }()
+
 	l, err := New()
 	require.EqualError(t, err, `logger level (debug, info, warn, error, dpanic, panic, fatal): unrecognized level: "warning"`)
 	require.Nil(t, l)
