@@ -13,7 +13,7 @@ import (
 )
 
 type FuncOnError func(ctx context.Context, logger *zap.Logger, err error)
-type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message) error
+type FuncOnProcess func(ctx context.Context, logger *zap.Logger, msg *kafka.Message, s ISleeper) error
 type FuncOnCommit func(ctx context.Context, logger *zap.Logger, topic string, partition int32, offset kafka.Offset, committed int)
 type FuncOnRevoke func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
 type FuncOnRebalance func(ctx context.Context, logger *zap.Logger, topic []kafka.TopicPartition)
@@ -162,8 +162,48 @@ func (c *Consumer) Stop() {
 	c.wg.Wait()
 }
 
-func (c *Consumer) listen() error {
+func (c *Consumer) Sleep(delay time.Duration, partitions []kafka.TopicPartition) error {
+	if len(partitions) == 0 {
+		return nil
+	}
+	err := c.reader.Pause(partitions)
+	if err != nil {
+		c.logger.With(
+			zap.Any("partitions", partitions),
+		).Warn("failed to pause consumer", zap.Error(err))
+		return err
+	}
 
+	go func() {
+		time.Sleep(delay)
+		select {
+		case <-c.ctx.Done():
+			c.logger.Warn("service already stopped")
+		default:
+			err := c.reader.Resume(partitions)
+			if err != nil {
+				c.logger.With(
+					zap.Any("partitions", partitions),
+				).Warn("failed to resume consumer", zap.Error(err))
+			}
+
+			//Resume doesn't return error if broker is unavailable, that's why we try to get metadata
+			for _, partition := range partitions {
+				_, err = c.reader.GetMetadata(partition.Topic, false, 2000)
+				if err != nil {
+					c.logger.With(
+						zap.String("topic", *partition.Topic),
+						zap.Int32("partition", partition.Partition),
+					).Warn("may be partition haven't been resumed", zap.Error(err))
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (c *Consumer) listen() error {
 	c.logger.Info("start listener")
 	err := c.reader.SubscribeTopics(c.topics, nil)
 	if err != nil {
@@ -336,7 +376,7 @@ func (c *Consumer) handleMessage(e *kafka.Message, consumerOffsets *offset) erro
 		return err
 	}
 
-	if err := c.onProcess(c.ctx, opLog, e); err != nil {
+	if err := c.onProcess(c.ctx, opLog, e, c); err != nil {
 		opLog.Error("failed to process message", zap.Error(err))
 		return err
 	}

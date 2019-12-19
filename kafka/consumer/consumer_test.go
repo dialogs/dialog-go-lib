@@ -26,7 +26,7 @@ func TestConsumerNew(t *testing.T) {
 		CommitOffsetCount:    1,
 		CommitOffsetDuration: time.Hour,
 		OnError:              func(context.Context, *zap.Logger, error) {},
-		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message) error { return nil },
+		OnProcess:            func(context.Context, *zap.Logger, *kafka.Message, ISleeper) error { return nil },
 		Topics:               []string{"a"},
 		ConfigMap: &kafka.ConfigMap{
 			"group.id":          "group-id",
@@ -61,7 +61,7 @@ func TestConsumerDoubleStartClose(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -96,7 +96,7 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message, 2)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -143,8 +143,96 @@ func TestConsumerReadMessageSuccess(t *testing.T) {
 	require.Equal(t, &Topic, res.TopicPartition.Topic)
 	require.Equal(t, int32(0), res.TopicPartition.Partition)
 	require.Equal(t, []byte(Topic), res.Value)
+}
 
-	c1.Stop()
+func TestConsumerReadMessagesWithDelay(t *testing.T) {
+
+	var Topic = "test-read-message-" + strconv.Itoa(int(time.Now().Unix()))
+
+	createTopic(t, Topic, 1, 1)
+	defer func() { removeTopic(t, Topic) }()
+
+	onError := func(_ context.Context, _ *zap.Logger, err error) {
+		require.NoError(t, err)
+	}
+
+	chMsg := make(chan *kafka.Message, 2)
+	delayDuration := 3 * time.Second
+	processedMessages := 0
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, c ISleeper) error {
+		processedMessages++
+		if msg == nil {
+			return errors.New("invalid message")
+		}
+		if processedMessages == 2 {
+			require.NoError(t, c.Sleep(delayDuration, []kafka.TopicPartition{msg.TopicPartition}))
+		}
+		chMsg <- msg
+		return nil
+	}
+
+	onCommit := func(_ context.Context, _ *zap.Logger, topic string, partition int32, offset kafka.Offset, count int) {
+		require.Equal(t, Topic, topic)
+		require.True(t, partition >= 0)
+		require.True(t, offset >= 0)
+	}
+
+	c1 := newConsumer(t, []string{Topic}, nil, onError, onProcess, onCommit, nil, nil)
+	defer c1.Stop()
+
+	go func() { require.NoError(t, c1.Start()) }()
+
+	p := newProducer(t, Topic)
+	defer p.Close()
+
+	produceMessage := func(t *testing.T) {
+		deliveryChan := make(chan kafka.Event)
+		require.NoError(t, p.Produce(
+			&kafka.Message{
+				TopicPartition: kafka.TopicPartition{
+					Topic:     &Topic,
+					Partition: kafka.PartitionAny,
+				},
+				Value: []byte(strconv.Itoa(int(time.Now().UnixNano()))),
+			},
+			deliveryChan))
+		require.Equal(t, 1, p.Flush(1))
+
+		event := <-deliveryChan
+		eventMessage, ok := event.(*kafka.Message)
+		require.True(t, ok, "%#v", event)
+		require.NoError(t, eventMessage.TopicPartition.Error, "%#v", event)
+	}
+
+	produceMessage(t)
+	select {
+	case <-c1.ctx.Done():
+		require.Fail(t, "service shouldn't be closed")
+	case <-chMsg:
+		//skipping first message, it makes us sure that producer is ready
+	}
+
+	const messageCount = 3
+	for i := 0; i < messageCount; i++ {
+		produceMessage(t)
+	}
+	for i := 0; i < messageCount; i++ {
+		select {
+		case <-c1.ctx.Done():
+			require.Fail(t, "service shouldn't be closed")
+		case res := <-chMsg:
+			require.Equal(t, &Topic, res.TopicPartition.Topic)
+			c, err := strconv.Atoi(string(res.Value))
+			require.NoError(t, err)
+			createdTime := time.Unix(0, int64(c))
+			var eps = 500 * time.Millisecond
+			if i == 0 {
+				require.WithinDuration(t, time.Now(), createdTime, eps)
+			} else {
+				require.WithinDuration(t, time.Now(), createdTime.Add(delayDuration), eps)
+			}
+		}
+	}
 }
 
 func TestConsumerRebalance(t *testing.T) {
@@ -160,7 +248,7 @@ func TestConsumerRebalance(t *testing.T) {
 	}
 
 	chMsg := make(chan *kafka.Message)
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -208,7 +296,7 @@ func TestConsumerFailedSubscribe(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -241,7 +329,7 @@ func TestConsumerRevokePartition(t *testing.T) {
 		chErrors <- err
 	}
 
-	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+	onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 		if msg == nil {
 			return errors.New("invalid message")
 		}
@@ -315,7 +403,7 @@ func TestConsumerCommit(t *testing.T) {
 		}
 
 		chMsg := make(chan *kafka.Message, countMessages)
-		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message) error {
+		onProcess := func(_ context.Context, _ *zap.Logger, msg *kafka.Message, _ ISleeper) error {
 			if msg == nil {
 				return errors.New("invalid message")
 			}
