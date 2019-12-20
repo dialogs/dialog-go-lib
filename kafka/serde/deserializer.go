@@ -7,13 +7,10 @@ import (
 	"fmt"
 	"io"
 
-	//"github.com/dialogs/dialog-go-lib/kafka/serde/avro/cache"
-
-	"github.com/pkg/errors"
-
 	"github.com/actgardner/gogen-avro/compiler"
 	"github.com/actgardner/gogen-avro/vm"
 	"github.com/actgardner/gogen-avro/vm/types"
+	"github.com/pkg/errors"
 )
 
 const _SchemaIDSize = 4
