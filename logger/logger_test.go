@@ -91,12 +91,12 @@ func TestLoggerNew(t *testing.T) {
 				value := testInfo.Args[i+1]
 
 				envNames = append(envNames, name)
-				os.Setenv(name, value)
+				require.NoError(t, os.Setenv(name, value))
 			}
 
 			defer func() {
 				for _, name := range envNames {
-					os.Unsetenv(name)
+					require.NoError(t, os.Unsetenv(name))
 				}
 			}()
 
@@ -142,8 +142,8 @@ func TestLoggerNew(t *testing.T) {
 
 func TestLoggerInvalidLevelName(t *testing.T) {
 
-	os.Setenv(_EnvLevel, "warning")
-	defer func() { os.Unsetenv(_EnvLevel) }()
+	require.NoError(t, os.Setenv(_EnvLevel, "warning"))
+	defer func() { require.NoError(t, os.Unsetenv(_EnvLevel)) }()
 
 	l, err := New()
 	require.EqualError(t, err, `logger level (debug, info, warn, error, dpanic, panic, fatal): unrecognized level: "warning"`)
