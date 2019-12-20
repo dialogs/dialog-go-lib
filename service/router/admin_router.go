@@ -3,8 +3,10 @@ package router
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/pprof"
 
 	"github.com/dialogs/dialog-go-lib/service/info"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // AdminRouter router for administration functions
@@ -18,11 +20,17 @@ func NewAdminRouter(appinfo *info.Info) *AdminRouter {
 
 	a := &AdminRouter{
 		appinfo: appinfo,
+		mux:     http.NewServeMux(),
 	}
 
-	a.mux = http.NewServeMux()
-	a.mux.HandleFunc("/health", a.health)
-	a.mux.HandleFunc("/info", a.info)
+	a.HandleFunc("/health", a.health)
+	a.HandleFunc("/info", a.info)
+	a.Handle("/metrics", promhttp.Handler())
+	a.HandleFunc("/debug/pprof/", pprof.Index)
+	a.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	a.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	a.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	a.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	return a
 }
