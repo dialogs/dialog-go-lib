@@ -3,18 +3,16 @@ module github.com/dialogs/dialog-go-lib
 go 1.13
 
 require (
-<<<<<<< HEAD
-	github.com/confluentinc/confluent-kafka-go v1.3.0
-=======
 	github.com/actgardner/gogen-avro v6.3.1+incompatible
-	github.com/confluentinc/confluent-kafka-go v1.1.0
->>>>>>> 695e235... feat(serde) added cache
+	github.com/confluentinc/confluent-kafka-go v1.3.0
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/google/uuid v1.1.1
 	github.com/lib/pq v1.0.0
 	github.com/mailru/easyjson v0.7.0
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/pierrec/lz4 v2.3.0+incompatible // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/prometheus/client_golang v1.3.0

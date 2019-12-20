@@ -95,7 +95,7 @@ func testAdminRouterPprof(t *testing.T, address, path string) {
 		Payload string
 	}{
 		{URL: ``, Payload: `<title>/debug/pprof/</title>`},
-		{URL: `cmdline`, Payload: `timeout=`},
+		{URL: `cmdline`, Payload: `test`},
 		{URL: `profile`, Query: "seconds=1", Payload: `nanoseconds`},
 		{URL: `symbol`, Payload: `num_symbols:`},
 		{URL: `trace`, Query: "seconds=1", Payload: ` trace`},
