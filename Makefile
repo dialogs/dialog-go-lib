@@ -21,7 +21,7 @@ static:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	go-tools-embedded:latest \
+	dialogs/go-tools-embedded:1.0.1 \
 	sh -c '\
 	rm -fv ${PROJECT}/db/migrations/test/static.go && \
 	go generate ${PROJECT}/db/migrations/test'
@@ -39,7 +39,7 @@ mock:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	go-tools-mock:latest \
+	dialogs/go-tools-mock:1.0.1 \
 	sh -c 'mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
 
@@ -50,7 +50,7 @@ easyjson:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	go-tools-easyjson:latest \
+	dialogs/go-tools-easyjson:1.0.1 \
 	sh -c 'rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
 	easyjson -all kafka/schemaregistry/response.go'
@@ -67,7 +67,7 @@ proto:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	go-tools-protoc:latest \
+	dialogs/go-tools-protoc:1.0.1 \
 	protoc \
 	-I=${$@_source} \
 	-I=vendor \
@@ -83,7 +83,7 @@ lint:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	go-tools-linter:latest \
+	dialogs/go-tools-linter:1.0.1 \
 	golangci-lint run ./... --exclude "is deprecated"
 
 .PHONY: testall
