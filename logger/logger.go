@@ -2,64 +2,39 @@ package logger
 
 import (
 	"os"
-	"strings"
 
 	"github.com/pkg/errors"
-	flag "github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+const (
+	_EnvLevel = "LOG_LEVEL"
+	_EnvTime  = "LOG_TIME"
+	_EnvMode  = "LOG_MODE"
+)
+
 func New() (*zap.Logger, error) {
 
-	const (
-		FlagLevel       = "loglevel"
-		FlagTime        = "logtime"
-		FlagDevelopMode = "logdevelop"
-	)
-
-	cmdName := getCmdName(os.Args)
-	flagSet := flag.NewFlagSet(cmdName, flag.ErrorHandling(-1)) // -1 - skip error 'not found flag'
-	flagSet.SetOutput(newNopWriter())                           // don't print help information about unknown flags
-	flagSet.ParseErrorsWhitelist.UnknownFlags = true            // skip unknown flags
-
-	flagSet.StringVarP(new(string), FlagLevel, "", "", "logger level (debug, info, warn, error, dpanic, panic, fatal)")
-	flagSet.StringVarP(new(string), FlagTime, "", "", "logger time format (iso8601, millis, nanos)")
-	flagSet.BoolVarP(new(bool), FlagDevelopMode, "", false, "logger develop mode")
-
-	if err := flagSet.ParseAll(os.Args, func(f *flag.Flag, v string) error {
-		return f.Value.Set(strings.TrimSpace(v))
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed to parse logger settings")
-	}
+	envLevel := os.Getenv(_EnvLevel)
+	envTime := os.Getenv(_EnvTime)
+	envMode := os.Getenv(_EnvMode)
 
 	var (
 		level                           = zapcore.DebugLevel
 		timeFormat  zapcore.TimeEncoder = zapcore.EpochTimeEncoder
-		developMode bool
+		developMode bool                = len(envMode) > 0
 	)
 
-	{
-		if f := flagSet.Lookup(FlagLevel); f != nil {
-			if v := f.Value.String(); v != "" {
-				if err := level.Set(v); err != nil {
-					return nil, errors.Wrap(err, f.Usage)
-				}
-			}
+	if envLevel != "" {
+		if err := level.Set(envLevel); err != nil {
+			return nil, errors.Wrap(err, "logger level (debug, info, warn, error, dpanic, panic, fatal)")
 		}
+	}
 
-		if f := flagSet.Lookup(FlagTime); f != nil {
-			if v := f.Value.String(); v != "" {
-				if err := timeFormat.UnmarshalText([]byte(v)); err != nil {
-					return nil, errors.Wrap(err, f.Usage)
-				}
-			}
-		}
-
-		if f := flagSet.Lookup(FlagDevelopMode); f != nil {
-			if f.Value.String() == "true" {
-				developMode = true
-			}
+	if envTime != "" {
+		if err := timeFormat.UnmarshalText([]byte(envTime)); err != nil {
+			return nil, errors.Wrap(err, "logger time format (iso8601, millis, nanos)")
 		}
 	}
 
@@ -77,15 +52,4 @@ func New() (*zap.Logger, error) {
 	}
 
 	return l, nil
-}
-
-func getCmdName(args []string) (cmdName string) {
-
-	if len(args) > 1 {
-		if v := args[1]; len(v) > 0 && v[0] != '-' {
-			cmdName = v
-		}
-	}
-
-	return
 }
