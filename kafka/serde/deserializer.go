@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 
+	//"github.com/dialogs/dialog-go-lib/kafka/serde/avro/cache"
+
 	"github.com/pkg/errors"
 
 	"github.com/actgardner/gogen-avro/compiler"
@@ -36,7 +38,7 @@ func (d Deserializer) Decode(r io.Reader, field types.Field) error {
 	return vm.Eval(r, d.Program, field)
 }
 
-func GetDeserializer(ctx context.Context, schemaKind Kind, src []byte, deserializers *Cache) (*Deserializer, []byte, error) {
+func GetDeserializer(ctx context.Context, schemaKind Kind, src []byte, deserializers IGetter) (*Deserializer, []byte, error) {
 
 	if len(src) < _SchemaIDSize+1 { // +1 magic byte
 		return nil, nil, fmt.Errorf("invalid incoming avro request: %#v", src)

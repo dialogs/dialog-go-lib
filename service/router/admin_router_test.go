@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -64,11 +65,82 @@ func TestAdminRouter(t *testing.T) {
 		{Name: "info", Fn: func(*testing.T) { testAdminRouterInfo(t, address) }},
 		{Name: "custom", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/custom") }},
 		{Name: "sub", Fn: func(*testing.T) { testAdminRouterHandlerWithEmptyBody(t, address, "/sub") }},
+		{Name: "metrics", Fn: func(*testing.T) { testAdminRouterMetrics(t, address, "/metrics") }},
+		{Name: "pprof", Fn: func(*testing.T) { testAdminRouterPprof(t, address, "/debug/pprof/") }},
 	} {
 		if !t.Run(testData.Name, testData.Fn) {
 			return
 		}
 	}
+}
+
+func testAdminRouterPprof(t *testing.T, address, path string) {
+
+	fnEndpoint := func(suffix, query string) string {
+		if !strings.HasSuffix(path, `/`) {
+			path += `/`
+		}
+
+		return (&url.URL{
+			Scheme:   "http",
+			Host:     address,
+			Path:     path + suffix,
+			RawQuery: query,
+		}).String()
+	}
+
+	for _, item := range []struct {
+		URL     string
+		Query   string
+		Payload string
+	}{
+		{URL: ``, Payload: `<title>/debug/pprof/</title>`},
+		{URL: `cmdline`, Payload: `timeout=`},
+		{URL: `profile`, Query: "seconds=1", Payload: `nanoseconds`},
+		{URL: `symbol`, Payload: `num_symbols:`},
+		{URL: `trace`, Query: "seconds=1", Payload: ` trace`},
+	} {
+		res, err := http.Get(fnEndpoint(item.URL, item.Query))
+		require.NoError(t, err, item.URL)
+		require.Equal(t, http.StatusOK, res.StatusCode, item.URL)
+
+		defer func() {
+			require.NoError(t, res.Body.Close(), item.URL)
+		}()
+
+		body, err := ioutil.ReadAll(res.Body)
+		require.NoError(t, err, item.URL)
+
+		bodyStr := string(body)
+		require.Contains(t, bodyStr, item.Payload, item.URL)
+	}
+
+}
+
+func testAdminRouterMetrics(t *testing.T, address, path string) {
+
+	endpoint := (&url.URL{
+		Scheme: "http",
+		Host:   address,
+		Path:   path,
+	}).String()
+
+	// test: ok
+	res, err := http.Get(endpoint)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	defer func() {
+		require.NoError(t, res.Body.Close())
+	}()
+
+	body, err := ioutil.ReadAll(res.Body)
+	require.NoError(t, err)
+
+	bodyStr := string(body)
+	require.Contains(t, bodyStr, `go_threads`)
+	require.Contains(t, bodyStr, `go_memstats_heap_released_bytes`)
+	require.Contains(t, bodyStr, `go_memstats_sys_bytes`)
 }
 
 func testAdminRouterHandlerWithEmptyBody(t *testing.T, address, path string) {
