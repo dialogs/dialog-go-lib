@@ -5,5 +5,5 @@ import (
 )
 
 type IGetter interface {
-	Get(ctx context.Context, kind Kind, schemaID int) (*Deserializer, error)
+	Get(context.Context, Kind, int) (*Deserializer, error)
 }
