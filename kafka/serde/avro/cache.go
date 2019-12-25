@@ -1,12 +1,11 @@
-package cache
+package avro
 
 import (
 	"context"
 	"sync"
 
-	"github.com/dialogs/dialog-go-lib/kafka/serde"
-
 	"github.com/dialogs/dialog-go-lib/kafka/schemaregistry"
+	"github.com/dialogs/dialog-go-lib/kafka/serde"
 	"github.com/pkg/errors"
 )
 

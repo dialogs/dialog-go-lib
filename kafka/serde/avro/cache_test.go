@@ -1,4 +1,4 @@
-package cache
+package avro
 
 import (
 	"context"
@@ -8,11 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dialogs/dialog-go-lib/kafka/serde"
-
 	"github.com/actgardner/gogen-avro/vm"
-
 	"github.com/dialogs/dialog-go-lib/kafka/schemaregistry"
+	"github.com/dialogs/dialog-go-lib/kafka/serde"
 	"github.com/stretchr/testify/require"
 )
 
