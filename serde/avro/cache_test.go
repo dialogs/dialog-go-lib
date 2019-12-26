@@ -10,7 +10,6 @@ import (
 
 	"github.com/actgardner/gogen-avro/vm"
 	"github.com/dialogs/dialog-go-lib/kafka/schemaregistry"
-	"github.com/dialogs/dialog-go-lib/kafka/serde"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,15 +44,15 @@ func TestCacheGet(t *testing.T) {
 
 	{
 		// test: not found
-		d, err := cache.Get(context.Background(), serde.KindUnknown, -1)
+		d, err := cache.Get(context.Background(), KindUnknown, -1)
 		require.EqualError(t, err, "failed to get schema for 'unknown': 404:40403 Schema not found")
 		require.Nil(t, d)
 
 		require.Equal(t,
 			&Cache{
 				schemaregistry: srClient,
-				schemas: map[serde.Kind]map[int]*serde.Deserializer{
-					serde.KindUnknown: make(map[int]*serde.Deserializer),
+				schemas: map[Kind]map[int]*Deserializer{
+					KindUnknown: make(map[int]*Deserializer),
 				},
 			},
 			cache)
@@ -63,7 +62,7 @@ func TestCacheGet(t *testing.T) {
 		// any iterations for check cache
 
 		// test: ok
-		d1, err := cache.Get(context.Background(), serde.KindUnknown, newSchema1.ID)
+		d1, err := cache.Get(context.Background(), KindUnknown, newSchema1.ID)
 		require.NoError(t, err)
 		require.Equal(t,
 			[]vm.Instruction{
@@ -77,14 +76,14 @@ func TestCacheGet(t *testing.T) {
 			},
 			d1.Instructions)
 
-		d2, err := cache.Get(context.Background(), serde.KindUnknown, newSchema2.ID)
+		d2, err := cache.Get(context.Background(), KindUnknown, newSchema2.ID)
 		require.NoError(t, err)
 
 		require.Equal(t,
 			&Cache{
 				schemaregistry: srClient,
-				schemas: map[serde.Kind]map[int]*serde.Deserializer{
-					serde.KindUnknown: {
+				schemas: map[Kind]map[int]*Deserializer{
+					KindUnknown: {
 						newSchema1.ID: d1,
 						newSchema2.ID: d2,
 					},
@@ -102,7 +101,12 @@ func getSchemaRegistryClient(t *testing.T) *schemaregistry.Client {
 		Host:   net.JoinHostPort("localhost", "8081"),
 	}).String()
 
-	client, err := schemaregistry.NewClient(addr, time.Second, nil)
+	cfg := &schemaregistry.ConfigMock{
+		Url:       addr,
+		Timeout:   time.Second,
+		Transport: nil,
+	}
+	client, err := schemaregistry.NewClient(cfg)
 	require.NoError(t, err)
 
 	return client

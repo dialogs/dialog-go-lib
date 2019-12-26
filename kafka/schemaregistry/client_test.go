@@ -16,7 +16,12 @@ func TestConfig(t *testing.T) {
 
 	ctx := context.Background()
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	cfg := &ConfigMock{
+		Url:       BaseUrl,
+		Timeout:   time.Second,
+		Transport: nil,
+	}
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -54,7 +59,13 @@ func TestSubject(t *testing.T) {
 
 	ctx := context.Background()
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	cfg := &ConfigMock{
+		Url:       BaseUrl,
+		Timeout:   time.Second,
+		Transport: nil,
+	}
+
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -144,7 +155,13 @@ func TestSubjectVersionsList(t *testing.T) {
 	ctx := context.Background()
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	cfg := &ConfigMock{
+		Url:       BaseUrl,
+		Timeout:   time.Second,
+		Transport: nil,
+	}
+
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -218,7 +235,12 @@ func TestUrlPool(t *testing.T) {
 		BaseUrl: BaseUrl,
 		"http://user:password@localhost:8081/path": "http://user:password@localhost:8081",
 	} {
-		c, err := NewClient(src, time.Second, nil)
+		cfg := &ConfigMock{
+			Url:       src,
+			Timeout:   time.Second,
+			Transport: nil,
+		}
+		c, err := NewClient(cfg)
 		require.NoError(t, err)
 
 		for i := 0; i < 2; i++ {

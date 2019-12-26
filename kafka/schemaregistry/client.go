@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 )
@@ -20,17 +19,21 @@ type Client struct {
 	uriPool sync.Pool
 }
 
-func NewClient(uri string, timeout time.Duration, transport *http.Transport) (*Client, error) {
+func NewClient(cfg IConfig) (*Client, error) {
 
-	u, err := url.Parse(uri)
+	u, err := url.Parse(cfg.GetUrl())
 	if err != nil {
 		return nil, err
 	}
 
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: cfg.GetTimeout(),
 	}
 
+	transport, err := cfg.GetTransport()
+	if err != nil {
+		return nil, err
+	}
 	if transport != nil {
 		client.Transport = transport
 	}

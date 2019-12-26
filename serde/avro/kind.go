@@ -1,4 +1,4 @@
-package serde
+package avro
 
 import (
 	"fmt"

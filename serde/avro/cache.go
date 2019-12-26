@@ -5,24 +5,23 @@ import (
 	"sync"
 
 	"github.com/dialogs/dialog-go-lib/kafka/schemaregistry"
-	"github.com/dialogs/dialog-go-lib/kafka/serde"
 	"github.com/pkg/errors"
 )
 
 type Cache struct {
-	schemas        map[serde.Kind]map[int]*serde.Deserializer
+	schemas        map[Kind]map[int]*Deserializer
 	schemaregistry *schemaregistry.Client
 	mu             sync.RWMutex
 }
 
 func NewCache(client *schemaregistry.Client) *Cache {
 	return &Cache{
-		schemas:        make(map[serde.Kind]map[int]*serde.Deserializer),
+		schemas:        make(map[Kind]map[int]*Deserializer),
 		schemaregistry: client,
 	}
 }
 
-func (d *Cache) Get(ctx context.Context, kind serde.Kind, schemaID int) (*serde.Deserializer, error) {
+func (d *Cache) Get(ctx context.Context, kind Kind, schemaID int) (*Deserializer, error) {
 
 	schemas := d.getSchemas(kind)
 
@@ -38,7 +37,7 @@ func (d *Cache) Get(ctx context.Context, kind serde.Kind, schemaID int) (*serde.
 		return nil, errors.Wrapf(err, "failed to get schema for '%s'", kind.String())
 	}
 
-	des, err = serde.New(schema.Schema, schema.Schema)
+	des, err = New(schema.Schema, schema.Schema)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create deserializer for '%s'", kind.String())
 	}
@@ -50,7 +49,7 @@ func (d *Cache) Get(ctx context.Context, kind serde.Kind, schemaID int) (*serde.
 	return des, nil
 }
 
-func (d *Cache) getSchemas(kind serde.Kind) map[int]*serde.Deserializer {
+func (d *Cache) getSchemas(kind Kind) map[int]*Deserializer {
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -60,7 +59,7 @@ func (d *Cache) getSchemas(kind serde.Kind) map[int]*serde.Deserializer {
 		return schemas
 	}
 
-	schemas = make(map[int]*serde.Deserializer)
+	schemas = make(map[int]*Deserializer)
 	d.schemas[kind] = schemas
 
 	return schemas

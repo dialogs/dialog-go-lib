@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -55,6 +58,27 @@ func GetFloat64(src *viper.Viper, key string) (float64, error) {
 	}
 
 	return 0, newError(key)
+}
+
+func NewCobraInitializer(cfgFile *string) func() {
+	return func() {
+		if strings.TrimSpace(*cfgFile) == "" {
+			log.Fatal("invalid config file name")
+		} else if _, err := os.Stat(*cfgFile); err != nil {
+			log.Fatal(err)
+		}
+
+		// Use config file from the flag.
+		viper.SetConfigFile(*cfgFile)
+		viper.AutomaticEnv() // read in environment variables that match
+
+		// If a config file is found, read it in.
+		if err := viper.ReadInConfig(); err != nil {
+			log.Fatal("failed to parse config:", err)
+		}
+
+		log.Println("using config file:", viper.ConfigFileUsed())
+	}
 }
 
 func newError(key string) error {
