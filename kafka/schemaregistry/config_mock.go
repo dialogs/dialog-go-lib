@@ -11,6 +11,14 @@ type ConfigMock struct {
 	Transport *http.Transport
 }
 
+func NewConfigMock(url string, timeout time.Duration, transport *http.Transport) *ConfigMock {
+	return &ConfigMock{
+		Url:       url,
+		Timeout:   timeout,
+		Transport: transport,
+	}
+}
+
 func (c *ConfigMock) GetUrl() string {
 	return c.Url
 }

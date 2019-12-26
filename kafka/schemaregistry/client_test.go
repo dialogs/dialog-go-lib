@@ -15,12 +15,8 @@ const BaseUrl = "http://localhost:8081"
 func TestConfig(t *testing.T) {
 
 	ctx := context.Background()
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
 
-	cfg := &ConfigMock{
-		Url:       BaseUrl,
-		Timeout:   time.Second,
-		Transport: nil,
-	}
 	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
@@ -58,12 +54,7 @@ func TestSubject(t *testing.T) {
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	ctx := context.Background()
-
-	cfg := &ConfigMock{
-		Url:       BaseUrl,
-		Timeout:   time.Second,
-		Transport: nil,
-	}
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
 
 	c, err := NewClient(cfg)
 	require.NoError(t, err)
@@ -152,14 +143,10 @@ func TestSubject(t *testing.T) {
 
 func TestSubjectVersionsList(t *testing.T) {
 
-	ctx := context.Background()
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
-	cfg := &ConfigMock{
-		Url:       BaseUrl,
-		Timeout:   time.Second,
-		Transport: nil,
-	}
+	ctx := context.Background()
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
 
 	c, err := NewClient(cfg)
 	require.NoError(t, err)
@@ -235,11 +222,7 @@ func TestUrlPool(t *testing.T) {
 		BaseUrl: BaseUrl,
 		"http://user:password@localhost:8081/path": "http://user:password@localhost:8081",
 	} {
-		cfg := &ConfigMock{
-			Url:       src,
-			Timeout:   time.Second,
-			Transport: nil,
-		}
+		cfg := NewConfigMock(src, time.Second, nil)
 		c, err := NewClient(cfg)
 		require.NoError(t, err)
 

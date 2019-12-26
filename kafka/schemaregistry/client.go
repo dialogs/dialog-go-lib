@@ -26,13 +26,13 @@ func NewClient(cfg IConfig) (*Client, error) {
 		return nil, err
 	}
 
-	client := &http.Client{
-		Timeout: cfg.GetTimeout(),
-	}
-
 	transport, err := cfg.GetTransport()
 	if err != nil {
 		return nil, err
+	}
+
+	client := &http.Client{
+		Timeout: cfg.GetTimeout(),
 	}
 	if transport != nil {
 		client.Transport = transport

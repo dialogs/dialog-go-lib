@@ -2,7 +2,6 @@ package avro
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -13,13 +12,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-const _SchemaIDSize = 4
-
 type Deserializer struct {
 	*vm.Program
 }
 
-func New(fromSchema, toSchema string) (*Deserializer, error) {
+func NewDeserializer(fromSchema, toSchema string) (*Deserializer, error) {
 
 	p, err := compiler.CompileSchemaBytes([]byte(fromSchema), []byte(toSchema))
 	if err != nil {
@@ -35,27 +32,25 @@ func (d Deserializer) Decode(r io.Reader, field types.Field) error {
 	return vm.Eval(r, d.Program, field)
 }
 
-func GetDeserializer(ctx context.Context, schemaKind Kind, src []byte, deserializers *Cache) (*Deserializer, []byte, error) {
+func ParseForDeserializer(src []byte) (schemaID int32, payload []byte, _ error) {
 
-	if len(src) < _SchemaIDSize+1 { // +1 magic byte
-		return nil, nil, fmt.Errorf("invalid incoming avro request: %#v", src)
+	const SchemaIDSize = 4
+
+	if len(src) < SchemaIDSize+1 { // +1 magic byte
+		return -1, nil, fmt.Errorf("invalid incoming avro request: %#v", src)
 	}
 
 	if src[0] != 0x00 {
-		return nil, nil, fmt.Errorf("invalid magic byte in incoming avro request: %#v", src)
+		return -1, nil, fmt.Errorf("invalid magic byte in incoming avro request: %#v", src)
 	}
 
-	src = src[1:]
+	src = src[1:] // exclude magic byte
 
-	var schemaID int32
-	if err := binary.Read(bytes.NewReader(src[:_SchemaIDSize]), binary.BigEndian, &schemaID); err != nil {
-		return nil, nil, errors.Wrap(err, "failed to read avro schema id")
+	if err := binary.Read(bytes.NewReader(src[:SchemaIDSize]), binary.BigEndian, &schemaID); err != nil {
+		return -1, nil, errors.Wrap(err, "failed to read avro schema id")
 	}
 
-	reqDecoder, err := deserializers.Get(ctx, schemaKind, int(schemaID))
-	if err != nil {
-		return nil, nil, err
-	}
+	payload = src[SchemaIDSize:]
 
-	return reqDecoder, src[_SchemaIDSize:], nil
+	return
 }
