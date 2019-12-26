@@ -15,8 +15,9 @@ const BaseUrl = "http://localhost:8081"
 func TestConfig(t *testing.T) {
 
 	ctx := context.Background()
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -53,8 +54,9 @@ func TestSubject(t *testing.T) {
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	ctx := context.Background()
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -141,10 +143,12 @@ func TestSubject(t *testing.T) {
 
 func TestSubjectVersionsList(t *testing.T) {
 
-	ctx := context.Background()
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
-	c, err := NewClient(BaseUrl, time.Second, nil)
+	ctx := context.Background()
+	cfg := NewConfigMock(BaseUrl, time.Second, nil)
+
+	c, err := NewClient(cfg)
 	require.NoError(t, err)
 
 	defer func() {
@@ -218,7 +222,8 @@ func TestUrlPool(t *testing.T) {
 		BaseUrl: BaseUrl,
 		"http://user:password@localhost:8081/path": "http://user:password@localhost:8081",
 	} {
-		c, err := NewClient(src, time.Second, nil)
+		cfg := NewConfigMock(src, time.Second, nil)
+		c, err := NewClient(cfg)
 		require.NoError(t, err)
 
 		for i := 0; i < 2; i++ {

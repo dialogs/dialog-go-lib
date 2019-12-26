@@ -3,6 +3,8 @@ module github.com/dialogs/dialog-go-lib
 go 1.13
 
 require (
+	github.com/actgardner/gogen-avro v6.3.1+incompatible
+	github.com/bluele/gcache v0.0.0-20190518031135-bc40bd653833
 	github.com/confluentinc/confluent-kafka-go v1.3.0
 	github.com/frankban/quicktest v1.7.2 // indirect
 	github.com/gogo/protobuf v1.3.1
