@@ -28,7 +28,7 @@ func TestConfig(t *testing.T) {
 
 	require.EqualError(t,
 		c.SetConfig(ctx, "", &ReqConfig{Compatibility: "unknown"}),
-		"422:42203 Invalid compatibility level. Valid values are none, backward, forward and full")
+		"422:42203 Invalid compatibility level. Valid values are none, backward, forward, full, backward_transitive, forward_transitive, and full_transitive")
 
 	{
 		// test: default settings

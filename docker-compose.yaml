@@ -4,7 +4,7 @@ version: '3'
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:5.2.3
+    image: confluentinc/cp-zookeeper:5.4.1
     ports:
       - '2181:2181'
     environment:
@@ -13,24 +13,27 @@ services:
       ALLOW_ANONYMOUS_LOGIN: "yes"
 
   kafka:
-    image: confluentinc/cp-kafka:5.2.3
+    image: confluentinc/cp-kafka:5.4.1
     depends_on:
       - zookeeper
     ports:
       - '9092:9092'
+    expose:
+      - '9093'
     environment:
       KAFKA_BROKER_ID: 1
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_DELETE_TOPIC_ENABLE: "true"
       KAFKA_CREATE_TOPICS: "TestKafka:1:1"
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:5.2.3
+    image: confluentinc/cp-schema-registry:5.4.1
     depends_on:
       - kafka
       - zookeeper
@@ -40,6 +43,47 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+
+  schema_registry_ui:
+    image: landoop/schema-registry-ui:latest
+    ports:
+      - "8001:8000"
+    environment:
+      SCHEMAREGISTRY_URL: http://schema-registry:8081
+      PROXY: 'true'
+    depends_on:
+      - schema-registry
+
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:5.4.1
+    depends_on:
+      - zookeeper
+      - kafka
+      - schema-registry
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_REST_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+      KAFKA_REST_HOST_NAME: rest_proxy
+      KAFKA_REST_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KAFKA_REST_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      KAFKA_REST_CONSUMER_REQUEST_TIMEOUT_MS: 30000
+      KAFKA_REST_ACCESS_CONTROL_ALLOW_METHODS: 'GET,POST,PUT,DELETE,OPTIONS'
+      KAFKA_REST_ACCESS_CONTROL_ALLOW_ORIGN: '*'
+
+  kafka-topics:
+    image: landoop/kafka-topics-ui:latest
+    depends_on:
+      - kafka
+      - zookeeper
+      - schema-registry
+      - rest-proxy
+    ports:
+      - '8000:8000'
+    environment:
+      KAFKA_REST_PROXY_URL: http://rest-proxy:8082
+      PROXY: "true"
 
   postgres:
     image: postgres:11
