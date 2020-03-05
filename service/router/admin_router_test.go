@@ -47,7 +47,7 @@ func TestAdminRouter(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(nil, address))
 	}()
 
 	defer func() {

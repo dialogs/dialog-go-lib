@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -12,9 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	pkgerr "github.com/pkg/errors"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 )
 
@@ -61,19 +60,22 @@ func (s *service) GetAddr() (addr string) {
 	return
 }
 
-func (s *service) serve(name, addr string, run func(retval chan<- error), stop func(*zap.Logger)) error {
+func (s *service) serve(l *zap.Logger, name, addr string, run, stop func() error) error {
 
-	conf := zap.NewProductionConfig()
-	conf.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
-	conf.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	l, err := conf.Build()
-	if err != nil {
-		return pkgerr.Wrap(err, "logger: "+name)
+	select {
+	case <-s.ctx.Done():
+		return http.ErrServerClosed
+	default:
+		// nothing do
 	}
-	l = l.With(zap.String(name, addr))
 
+	if l == nil {
+		l = zap.NewNop()
+	}
+
+	l = l.With(zap.String(name, addr))
 	defer func() {
+		s.ctxCancel()
 		l.Info("the service is done")
 	}()
 
@@ -81,7 +83,7 @@ func (s *service) serve(name, addr string, run func(retval chan<- error), stop f
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	retval := make(chan error)
-	go run(retval)
+	go func() { retval <- run() }()
 
 	l.Info("the service is ready to listen and serve")
 
@@ -89,18 +91,14 @@ func (s *service) serve(name, addr string, run func(retval chan<- error), stop f
 		select {
 		case <-s.ctx.Done():
 			l.Info("closing...")
-			retval <- http.ErrServerClosed
 		case killSignal := <-interrupt:
-			switch killSignal {
-			case os.Interrupt:
-				l.Info("got SIGINT...")
-			case syscall.SIGTERM:
-				l.Info("got SIGTERM...")
-			}
+			l.Info(fmt.Sprintf("got %s...", killSignal.String()))
 		}
 
 		l.Info("the service is shutting down...")
-		stop(l)
+		if err := stop(); err != nil {
+			l.Error("failed to shutdown", zap.Error(err))
+		}
 	}()
 
 	return <-retval
