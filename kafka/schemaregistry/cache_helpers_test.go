@@ -18,7 +18,7 @@ func TestGCacheLoaderFunc(t *testing.T) {
 	subject := "sbj" + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	ctx := context.Background()
-	cfg := NewConfigMock(BaseUrl, time.Second, nil)
+	cfg := NewConfigMock(BaseUrl, time.Second*5, nil)
 
 	client, err := NewClient(cfg)
 	require.NoError(t, err)

@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
-	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -114,14 +113,14 @@ func TestGRPC(t *testing.T) {
 	address := host + ":" + p
 
 	wgClose := sync.WaitGroup{}
+	wgClose.Add(1)
 	go func() {
 		defer wgClose.Done()
 
-		require.Equal(t, http.ErrServerClosed, grpcSvr.ListenAndServeAddr(address))
+		require.NoError(t, grpcSvr.ListenAndServeAddr(nil, address))
 	}()
 
 	defer func() {
-		wgClose.Add(1)
 		require.NoError(t, grpcSvr.Close())
 		wgClose.Wait()
 	}()

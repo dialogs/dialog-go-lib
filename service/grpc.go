@@ -3,9 +3,8 @@ package service
 import (
 	"net"
 
-	pkgerr "github.com/pkg/errors"
-	"google.golang.org/grpc"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 // A GRPC service
@@ -29,31 +28,30 @@ func (g *GRPC) RegisterService(fn func(svr *grpc.Server)) {
 
 // ListenAndServeAddr listens on the TCP network address and
 // accepts incoming connections on the listener
-func (g *GRPC) ListenAndServeAddr(addr string) error {
+func (g *GRPC) ListenAndServeAddr(l *zap.Logger, addr string) error {
 	g.SetAddr(addr)
-	return g.ListenAndServe()
+	return g.ListenAndServe(l)
 }
 
 // ListenAndServe listens on the TCP network address and
 // accepts incoming connections on the listener
-func (g *GRPC) ListenAndServe() error {
+func (g *GRPC) ListenAndServe(l *zap.Logger) error {
 
 	addr := g.GetAddr()
 
-	run := func(retval chan<- error) {
-
-		l, err := net.Listen("tcp", addr)
+	run := func() error {
+		listener, err := net.Listen("tcp", addr)
 		if err != nil {
-			retval <- pkgerr.Wrap(err, "new grpc listener")
-			return
+			return err
 		}
 
-		retval <- g.svr.Serve(l)
+		return g.svr.Serve(listener)
 	}
 
-	stop := func(*zap.Logger) {
+	stop := func() error {
 		g.svr.GracefulStop()
+		return nil
 	}
 
-	return g.serve("grpc service", addr, run, stop)
+	return g.serve(l, "grpc service", addr, run, stop)
 }

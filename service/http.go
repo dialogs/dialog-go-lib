@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -39,18 +40,20 @@ func NewHTTPWithServer(server *http.Server, closeTimeout time.Duration) *HTTP {
 
 // ListenAndServeAddr listens on the TCP network address and
 // accepts incoming connections on the listener
-func (s *HTTP) ListenAndServeAddr(addr string) error {
+func (s *HTTP) ListenAndServeAddr(l *zap.Logger, addr string) error {
 	s.SetAddr(addr)
-	return s.ListenAndServe()
+	return s.ListenAndServe(l)
 }
 
 // ListenAndServe listens on the TCP network address and
 // accepts incoming connections on the listener
-func (s *HTTP) ListenAndServe() error {
+func (s *HTTP) ListenAndServe(l *zap.Logger) error {
 
-	addr := s.GetAddr()
+	var (
+		svr  *http.Server
+		addr = s.GetAddr()
+	)
 
-	var svr *http.Server
 	if s.server != nil {
 		svr = s.server
 		if addr != "" {
@@ -65,28 +68,24 @@ func (s *HTTP) ListenAndServe() error {
 
 	}
 
-	run := func(retval chan<- error) {
-		if svr.Addr == "" {
-			retval <- errors.New("invalid server address")
-			return
+	run := func() error {
+		if strings.TrimSpace(svr.Addr) == "" {
+			return errors.New("invalid server address")
 		}
 
 		if svr.TLSConfig != nil {
-			// use svr.TLSConfig.Certificates for certificates
-			retval <- svr.ListenAndServeTLS("", "")
-		} else {
-			retval <- svr.ListenAndServe()
+			return svr.ListenAndServeTLS("", "")
 		}
+
+		return svr.ListenAndServe()
 	}
 
-	stop := func(l *zap.Logger) {
+	stop := func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), s.closeTimeout)
 		defer cancel()
 
-		if err := svr.Shutdown(ctx); err != nil {
-			l.Error("failed to shutdown", zap.Error(err))
-		}
+		return svr.Shutdown(ctx)
 	}
 
-	return s.serve("http service", addr, run, stop)
+	return s.serve(l, "http service", addr, run, stop)
 }

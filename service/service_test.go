@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dialogs/dialog-go-lib/cert"
+	"github.com/dialogs/dialog-go-lib/logger"
 	"github.com/dialogs/dialog-go-lib/service/test"
 	"github.com/gogo/protobuf/types"
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,9 @@ func init() {
 
 func TestGRPC(t *testing.T) {
 
+	l, err := logger.New()
+	require.NoError(t, err)
+
 	h, p := tempAddress(t)
 	address := net.JoinHostPort(h, p)
 
@@ -42,7 +46,7 @@ func TestGRPC(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.NoError(t, svc.ListenAndServeAddr(address))
+		require.NoError(t, svc.ListenAndServeAddr(l, address))
 
 		// test: safe close
 		require.NoError(t, svc.Close())
@@ -59,12 +63,15 @@ func TestGRPC(t *testing.T) {
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGINT))
 	wg.Wait()
 
-	require.EqualError(t,
-		PingGRPC(address, 1, clientOptions...),
-		"context deadline exceeded")
+	require.Equal(t,
+		context.DeadlineExceeded,
+		PingGRPC(address, 1, clientOptions...))
 }
 
 func TestHTTP(t *testing.T) {
+
+	l, err := logger.New()
+	require.NoError(t, err)
 
 	h, p := tempAddress(t)
 	address := net.JoinHostPort(h, p)
@@ -77,7 +84,7 @@ func TestHTTP(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(l, address))
 
 		// test: safe close
 		require.NoError(t, svc.Close())
@@ -89,9 +96,11 @@ func TestHTTP(t *testing.T) {
 	require.NoError(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	wg.Wait()
 
-	require.EqualError(t,
-		PingConn(svc.GetAddr(), 1, time.Microsecond, nil),
-		fmt.Sprintf("dial tcp %s: i/o timeout", address))
+	err = PingConn(svc.GetAddr(), 1, time.Microsecond, nil)
+	eNet := err.(*net.OpError)
+	require.Equal(t, eNet.Op, "dial")
+	require.True(t, eNet.Timeout())
+	require.Equal(t, address, eNet.Addr.String())
 }
 
 func TestHTTPCloseBeforeRun(t *testing.T) {
@@ -109,7 +118,7 @@ func TestHTTPCloseBeforeRun(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(nil, address))
 
 		// test: safe close
 		require.NoError(t, svc.Close())
@@ -117,7 +126,6 @@ func TestHTTPCloseBeforeRun(t *testing.T) {
 
 	{
 		err := PingConn(address, 2, time.Second, nil)
-		require.NotNil(t, err)
 		eNet := err.(*net.OpError)
 		require.Equal(t, eNet.Op, "dial")
 		eSys := eNet.Err.(*os.SyscallError)
@@ -130,10 +138,10 @@ func TestHTTPCloseBeforeRun(t *testing.T) {
 
 	{
 		err := PingConn(svc.GetAddr(), 1, time.Microsecond, nil)
-		require.NotNil(t, err)
 		eNet := err.(*net.OpError)
 		require.Equal(t, eNet.Op, "dial")
-		require.EqualError(t, eNet.Err, "i/o timeout")
+		require.True(t, eNet.Timeout())
+		require.Equal(t, address, eNet.Addr.String())
 	}
 }
 
@@ -149,7 +157,7 @@ func TestGRPCCloseBeforeRun(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(nil, address))
 
 		// test: safe close
 		require.NoError(t, svc.Close())
@@ -166,12 +174,15 @@ func TestGRPCCloseBeforeRun(t *testing.T) {
 	require.NoError(t, svc.Close())
 	wg.Wait()
 
-	require.EqualError(t,
-		PingGRPC(address, 1, clientOptions...),
-		"context deadline exceeded")
+	require.Equal(t,
+		context.DeadlineExceeded,
+		PingGRPC(address, 1, clientOptions...))
 }
 
 func TestGRPCWithTLS(t *testing.T) {
+
+	l, err := logger.New()
+	require.NoError(t, err)
 
 	tlsCert, ca := newTLSCert(t)
 
@@ -191,15 +202,14 @@ func TestGRPCWithTLS(t *testing.T) {
 		})
 
 		var wgClose sync.WaitGroup
+		wgClose.Add(1)
 		go func() {
 			defer wgClose.Done()
 
-			require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+			require.NoError(t, svc.ListenAndServeAddr(l, address))
 		}()
 
 		defer func() {
-			wgClose.Add(1)
-
 			require.NoError(t, svc.Close())
 			wgClose.Wait()
 		}()
@@ -246,6 +256,9 @@ func TestGRPCWithTLS(t *testing.T) {
 
 func TestHTTPWithTLS(t *testing.T) {
 
+	l, err := logger.New()
+	require.NoError(t, err)
+
 	tlsCert, ca := newTLSCert(t)
 
 	caPool := x509.NewCertPool()
@@ -280,7 +293,7 @@ func TestHTTPWithTLS(t *testing.T) {
 	go func() {
 		defer wgClose.Done()
 
-		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(address))
+		require.Equal(t, http.ErrServerClosed, svc.ListenAndServeAddr(l, address))
 	}()
 
 	defer func() {
@@ -383,8 +396,14 @@ func testHTTPTLSClientError(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Ce
 		u := (&url.URL{Scheme: "https", Host: address}).String()
 
 		resp, err := client.Get(u)
-		require.EqualError(t, err, fmt.Sprintf(e, u), "error: "+e)
 		require.Nil(t, resp)
+		require.Contains(t,
+			[]string{
+				fmt.Sprintf(e, u),                      // before go1.14
+				fmt.Sprintf(e, fmt.Sprintf(`"%s"`, u)), // go1.14
+			},
+			err.Error(),
+			"error: "+e)
 	}
 }
 
