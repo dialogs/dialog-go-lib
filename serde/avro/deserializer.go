@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/actgardner/gogen-avro/compiler"
-	"github.com/actgardner/gogen-avro/vm"
-	"github.com/actgardner/gogen-avro/vm/types"
+	"github.com/actgardner/gogen-avro/v7/compiler"
+	"github.com/actgardner/gogen-avro/v7/vm"
+	"github.com/actgardner/gogen-avro/v7/vm/types"
 	"github.com/pkg/errors"
 )
 

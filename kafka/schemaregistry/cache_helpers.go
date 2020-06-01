@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/dialogs/dialog-go-lib/serde/avro"
-
 	"github.com/pkg/errors"
 )
 
