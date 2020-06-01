@@ -6,10 +6,12 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
+	bindata "github.com/golang-migrate/migrate/v4/source/go_bindata"
+	"github.com/pkg/errors"
 	pkgerr "github.com/pkg/errors"
 )
 
-func init() {
+func RegisterPostgresDriver() {
 	// Stub for call postgres.init()
 	// Fix error: 'database driver: unknown driver postgres (forgotten import?)'
 	if postgres.DefaultMigrationsTable == "" {
@@ -21,23 +23,23 @@ func init() {
 type Migrate migrate.Migrate
 
 // NewMigrate create a new migration driver
-func NewMigrate(fs http.FileSystem, dirName, dbURL string, getAssets FilesList) (*Migrate, error) {
+func NewMigrate(dbURL string, fs http.FileSystem, dirName string, getAssets FilesList) (*Migrate, error) {
 
 	assetsDriver, err := NewAssetsDriver(fs, dirName, getAssets)
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "new assets driver")
+		return nil, pkgerr.Wrap(err, "failed to create migrations data driver")
 	}
 
 	m, err := migrate.NewWithSourceInstance("go-bindata", assetsDriver, dbURL)
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "new migrator")
+		return nil, pkgerr.Wrap(err, "failed to create migrations instance")
 	}
 
 	return (*Migrate)(m), nil
 }
 
 // NewMigrateWithConn create a new migration driver by existing database connection
-func NewMigrateWithConn(fs http.FileSystem, dirName string, db *sql.DB, getAssets FilesList) (*Migrate, error) {
+func NewMigrateWithConn(db *sql.DB, fs http.FileSystem, dirName string, getAssets FilesList) (*Migrate, error) {
 
 	assetsDriver, err := NewAssetsDriver(fs, dirName, getAssets)
 	if err != nil {
@@ -46,12 +48,34 @@ func NewMigrateWithConn(fs http.FileSystem, dirName string, db *sql.DB, getAsset
 
 	dbDriver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "new database driver")
+		return nil, pkgerr.Wrap(err, "failed to create migrations data driver")
 	}
 
 	m, err := migrate.NewWithInstance("go-bindata", assetsDriver, "postgres", dbDriver)
 	if err != nil {
-		return nil, pkgerr.Wrap(err, "new migrator")
+		return nil, pkgerr.Wrap(err, "failed to create migrations instance")
+	}
+
+	return (*Migrate)(m), nil
+}
+
+func NewMigrateFromCustomSource(dbURL string, assetsNames func() []string, getAsset func(name string) ([]byte, error)) (*Migrate, error) {
+
+	s := bindata.Resource(assetsNames(),
+		func(name string) (data []byte, err error) {
+			data, err = getAsset(name)
+			err = errors.Wrap(err, "failed to get migration data: "+name)
+			return
+		})
+
+	d, err := bindata.WithInstance(s)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create migrations data driver")
+	}
+
+	m, err := migrate.NewWithSourceInstance("migrations", d, dbURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create migrations instance")
 	}
 
 	return (*Migrate)(m), nil
@@ -78,6 +102,20 @@ func (m *Migrate) Down() error {
 
 	if err != nil && err != migrate.ErrNoChange {
 		return pkgerr.Wrap(err, "migrations: down")
+	}
+
+	return nil
+}
+
+// Steps looks at the currently active migration version.
+// It will migrate up if n > 0, and down if n < 0.
+func (m *Migrate) Steps(n int) error {
+
+	native := (*migrate.Migrate)(m)
+	err := native.Steps(n)
+
+	if err != nil && err != migrate.ErrNoChange {
+		return pkgerr.Wrap(err, "failed to do steps")
 	}
 
 	return nil

@@ -20,11 +20,21 @@ static:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	-e "GOFLAGS=" \
-	dialogs/go-tools-embedded:1.0.1 \
+	dialogs/go-tools-embedded:1.0.2 \
 	sh -c '\
-	rm -fv ${PROJECT}/db/migrations/test/static.go && \
-	go generate ${PROJECT}/db/migrations/test'
+	rm -fv db/migrations/test/esc/static.go && \
+	go generate ${PROJECT}/db/migrations/test/esc'
+
+
+	docker run -it --rm \
+	-v "$(shell pwd):/go/src/${PROJECT}" \
+	-v "${GOPATH}/pkg:/go/pkg" \
+	-w "/go/src/${PROJECT}" \
+	dialogs/go-tools-embedded:1.0.2 \
+	sh -c '\
+	(cd db/migrations/test/assets/; \
+	 rm -fv ../gobindata/migrations.go; \
+	 go-bindata -pkg gobindata -nomemcopy -o ../gobindata/migrations.go *.sql)'
 
 .PHONY: mock
 mock:
@@ -38,8 +48,7 @@ mock:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	-e "GOFLAGS=" \
-	dialogs/go-tools-mock:1.0.1 \
+	dialogs/go-tools-mock:1.0.2 \
 	sh -c 'mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
 
@@ -49,8 +58,7 @@ easyjson:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	-e "GOFLAGS=" \
-	dialogs/go-tools-easyjson:1.0.1 \
+	dialogs/go-tools-easyjson:1.0.2 \
 	sh -c 'rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
 	easyjson -all kafka/schemaregistry/response.go'
@@ -67,10 +75,9 @@ proto:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	dialogs/go-tools-protoc:1.0.1 \
+	dialogs/go-tools-protoc:1.0.4 \
 	protoc \
 	-I=${$@_source} \
-	-I=vendor \
 	--gogofaster_out=plugins=grpc,\
 	Mgoogle/protobuf/empty.proto=github.com/gogo/protobuf/types,\
 	:${$@_target} \
@@ -83,7 +90,7 @@ lint:
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
 	-e "GOFLAGS=" \
-	dialogs/go-tools-linter:1.0.1 \
+	dialogs/go-tools-linter:1.0.2 \
 	golangci-lint run ./... --exclude "is deprecated"
 
 .PHONY: testall
@@ -99,7 +106,7 @@ $(TEST_TARGETS):
 	$(eval $@_filename := $(subst /,_,$($@_package)))
 
 	@echo "== test directory $($@_package) =="
-	@GO111MODULE=on go test $($@_package) -v -race \
+	@GO111MODULE=on go test $($@_package) -v -count=1 -race \
     -coverprofile $(TEST_OUT_DIR)/$($@_filename)_cover.out \
     >> $(TEST_OUT_DIR)/$($@_filename).out \
    || ( echo 'fail $($@_package)' && cat $(TEST_OUT_DIR)/$($@_filename).out; exit 1);

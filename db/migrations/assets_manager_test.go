@@ -4,18 +4,18 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/dialogs/dialog-go-lib/db/migrations/test"
+	"github.com/dialogs/dialog-go-lib/db/migrations/test/esc"
 	"github.com/stretchr/testify/require"
 )
 
 func TestManager(t *testing.T) {
 
-	list, err := GetFilesList(test.Assets, test.DirName)
+	list, err := GetFilesList(esc.Assets, esc.DirName)
 	require.NoError(t, err)
 	require.Contains(t, list, "1_example.down.sql")
 	require.Contains(t, list, "1_example.up.sql")
 
-	fn := NewFileReaderHandler(test.Assets, test.DirName)
+	fn := NewFileReaderHandler(esc.Assets, esc.DirName)
 	data, err := fn("1_example.down.sql")
 	require.NoError(t, err)
 
@@ -26,14 +26,14 @@ func TestManager(t *testing.T) {
 func TestDriver(t *testing.T) {
 
 	// test: fail
-	driver, err := NewAssetsDriver(test.Assets, test.DirName+"1", GetFilesList)
+	driver, err := NewAssetsDriver(esc.Assets, esc.DirName+"1", GetFilesList)
 	require.EqualError(t,
 		err,
 		"files for migrations assets driver: failed to open directory '/assets1': file does not exist")
 	require.Nil(t, driver)
 
 	// test: ok
-	driver, err = NewAssetsDriver(test.Assets, test.DirName, GetFilesList)
+	driver, err = NewAssetsDriver(esc.Assets, esc.DirName, GetFilesList)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, driver.Close())
