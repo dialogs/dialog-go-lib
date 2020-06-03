@@ -93,7 +93,7 @@ services:
     environment:
       - POSTGRES_DB=example
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=
+      - POSTGRES_PASSWORD=123
       - POSTGRES_INITDB_ARGS=--data-checksums
 
   pgadmin:

@@ -6,10 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dialogs/dialog-go-lib/serde/avro"
-
-	"github.com/actgardner/gogen-avro/vm"
+	"github.com/actgardner/gogen-avro/v7/vm"
 	"github.com/bluele/gcache"
+	"github.com/dialogs/dialog-go-lib/serde/avro"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,13 +49,13 @@ func TestGCacheLoaderFunc(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t,
 			[]vm.Instruction{
-				{Op: 7, Operand: 2},
-				{Op: 9, Operand: 0},
+				{Op: 8, Operand: 2},
+				{Op: 10, Operand: 0},
 				{Op: 2, Operand: 0},
 				{Op: 0, Operand: 8},
 				{Op: 1, Operand: 8},
 				{Op: 3, Operand: 65535},
-				{Op: 8, Operand: 65535},
+				{Op: 9, Operand: 65535},
 			},
 			val.(*avro.Deserializer).Program.Instructions)
 	}

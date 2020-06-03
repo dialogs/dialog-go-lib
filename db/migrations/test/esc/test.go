@@ -1,6 +1,6 @@
-//go:generate esc -o static.go -pkg test -no-compress assets
+//go:generate esc -o static.go -pkg esc -no-compress ../assets
 
-package test
+package esc
 
 import "net/http"
 
