@@ -254,7 +254,7 @@ func TestGRPCWithTLS(t *testing.T) {
 	{
 		// create server
 		creds := credentials.NewTLS(&tls.Config{
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			Certificates: []tls.Certificate{*tlsCert},
 		})
 
@@ -286,7 +286,7 @@ func TestGRPCWithTLS(t *testing.T) {
 			grpc.WithBlock(),
 			grpc.WithTimeout(time.Second),
 			grpc.WithTransportCredentials(
-				credentials.NewClientTLSFromCert(caPool, "localhost")),
+				credentials.NewClientTLSFromCert(caPool, "127.0.0.1")),
 		}
 
 		require.NoError(t, PingGRPC(address, 2, clientOptions...))
@@ -397,20 +397,19 @@ func TestHTTPWithTLS(t *testing.T) {
 }
 
 func testHTTPTLSClientPing(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Certificate, address string) {
-	t.Helper()
 
 	require.NoError(t,
 		PingConn(address, 2, time.Second, nil))
 
 	require.NoError(t,
 		PingConn(address, 2, time.Second, &tls.Config{
-			ServerName: "localhost",
+			ServerName: "127.0.0.1",
 			RootCAs:    caPool,
 		}))
 
 	require.EqualError(t,
 		PingConn(address, 2, time.Second, &tls.Config{
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			RootCAs:      caPool,
 			Certificates: []tls.Certificate{*tlsCert},
 			CipherSuites: []uint16{tls.TLS_CHACHA20_POLY1305_SHA256},
@@ -420,28 +419,28 @@ func testHTTPTLSClientPing(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Cer
 }
 
 func testHTTPTLSClientError(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Certificate, address string) {
-	t.Helper()
 
 	variants := map[*tls.Config]string{
 		// invalid cipher suites
 		&tls.Config{
 			RootCAs:      caPool,
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			Certificates: []tls.Certificate{*tlsCert},
 			CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA},
 			MaxVersion:   tls.VersionTLS10,
 		}: "Get %s: remote error: tls: handshake failure",
 		// invalid server name
 		&tls.Config{
+			ServerName:   "localhost",
 			RootCAs:      caPool,
 			Certificates: []tls.Certificate{*tlsCert},
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
 			},
-		}: "Get %s: x509: cannot validate certificate for 127.0.0.1 because it doesn't contain any IP SANs",
+		}: `Get "%s": x509: certificate is not valid for any names, but wanted to match localhost`,
 		// invalid root CAs
 		&tls.Config{
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			Certificates: []tls.Certificate{*tlsCert},
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
@@ -458,7 +457,7 @@ func testHTTPTLSClientError(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Ce
 		u := (&url.URL{Scheme: "https", Host: address}).String()
 
 		resp, err := client.Get(u)
-		require.Nil(t, resp)
+		require.Nil(t, resp, e)
 		require.Contains(t,
 			[]string{
 				fmt.Sprintf(e, u),                      // before go1.14
@@ -470,13 +469,12 @@ func testHTTPTLSClientError(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Ce
 }
 
 func testHTTPTLSClientOk(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Certificate, address string) {
-	t.Helper()
 
 	variants := []*tls.Config{
 		// full
 		&tls.Config{
 			RootCAs:      caPool,
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			Certificates: []tls.Certificate{*tlsCert},
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
@@ -485,18 +483,18 @@ func testHTTPTLSClientOk(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Certi
 		// without cipher suites
 		&tls.Config{
 			RootCAs:      caPool,
-			ServerName:   "localhost",
+			ServerName:   "127.0.0.1",
 			Certificates: []tls.Certificate{*tlsCert},
 		},
 		// without tls certificate and cipher suites
 		&tls.Config{
 			RootCAs:    caPool,
-			ServerName: "localhost",
+			ServerName: "127.0.0.1",
 		},
 		// without tls certificate
 		&tls.Config{
 			RootCAs:    caPool,
-			ServerName: "localhost",
+			ServerName: "127.0.0.1",
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_RSA_WITH_RC4_128_SHA,
 			},
@@ -518,7 +516,6 @@ func testHTTPTLSClientOk(t *testing.T, caPool *x509.CertPool, tlsCert *tls.Certi
 }
 
 func tempAddress(t *testing.T) (host, port string) {
-	t.Helper()
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -530,7 +527,6 @@ func tempAddress(t *testing.T) (host, port string) {
 }
 
 func newTLSCert(t *testing.T) (*tls.Certificate, *x509.Certificate) {
-	t.Helper()
 
 	ca := cert.NewX509(
 		big.NewInt(rand.Int63()),
@@ -541,6 +537,8 @@ func newTLSCert(t *testing.T) (*tls.Certificate, *x509.Certificate) {
 			"email@mydomain.com",
 			[]string{"CA"},
 			[]string{"localhost"}))
+
+	ca.IPAddresses = []net.IP{net.IPv4(127, 0, 0, 1)}
 
 	privateKey, err := cert.NewRSA(1024)
 	require.NoError(t, err)
@@ -564,7 +562,6 @@ func newTLSCert(t *testing.T) (*tls.Certificate, *x509.Certificate) {
 }
 
 func getHTTPResponseBody(t *testing.T, resp *http.Response) string {
-	t.Helper()
 
 	defer func() {
 		require.NoError(t, resp.Body.Close())
