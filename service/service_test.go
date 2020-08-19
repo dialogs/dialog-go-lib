@@ -27,9 +27,71 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+type brokenChecker struct {
+}
+
+func (c *brokenChecker) Ping(context.Context, *types.Empty) (*types.Empty, error) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	wg.Wait()
+	return &types.Empty{}, nil
+}
+
 func init() {
 	// for debug
 	log.SetFlags(log.Llongfile | log.Ltime | log.Lmicroseconds)
+}
+
+func TestGRPCShutdownWithTimeout(t *testing.T) {
+
+	l, err := logger.New()
+	require.NoError(t, err)
+
+	h, p := tempAddress(t)
+	address := net.JoinHostPort(h, p)
+
+	svc := NewGRPC()
+	require.Equal(t, time.Second*30, svc.closeTimeout)
+	svc.WithCloseTimeout(time.Second)
+	require.Equal(t, time.Second, svc.closeTimeout)
+
+	chCloseTimestamps := make(chan time.Time, 1)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		svc.RegisterService(func(g *grpc.Server) {
+			test.RegisterCheckerServer(g, &brokenChecker{})
+		})
+		require.NoError(t, svc.ListenAndServeAddr(l, address))
+
+		start := <-chCloseTimestamps
+		sub := time.Since(start)
+		require.True(t, sub >= time.Second, sub.String())
+		require.True(t, sub < time.Millisecond*1500, sub.String())
+	}()
+
+	clientOptions := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithBlock(),
+		grpc.WithTimeout(time.Second)}
+
+	require.NoError(t, PingGRPC(address, 2, clientOptions...))
+
+	clientConn, err := grpc.Dial(address, clientOptions...)
+	require.NoError(t, err)
+
+	client := test.NewCheckerClient(clientConn)
+
+	go func() {
+		time.Sleep(time.Microsecond * 200)
+		chCloseTimestamps <- time.Now()
+		require.NoError(t, svc.Close())
+	}()
+
+	_, err = client.Ping(context.Background(), &types.Empty{})
+	require.EqualError(t, err, "rpc error: code = Unavailable desc = transport is closing")
 }
 
 func TestGRPC(t *testing.T) {

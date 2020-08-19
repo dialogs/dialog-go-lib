@@ -2,6 +2,7 @@ package service
 
 import (
 	"net"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -10,15 +11,22 @@ import (
 // A GRPC service
 type GRPC struct {
 	*service
-	svr *grpc.Server
+	svr          *grpc.Server
+	closeTimeout time.Duration
 }
 
 // NewGRPC create grpc service
 func NewGRPC(opts ...grpc.ServerOption) *GRPC {
 	return &GRPC{
-		service: newService(),
-		svr:     grpc.NewServer(opts...),
+		service:      newService(),
+		svr:          grpc.NewServer(opts...),
+		closeTimeout: time.Second * 30,
 	}
+}
+
+func (g *GRPC) WithCloseTimeout(val time.Duration) *GRPC {
+	g.closeTimeout = val
+	return g
 }
 
 // RegisterService add new service to the grpc server
@@ -49,7 +57,22 @@ func (g *GRPC) ListenAndServe(l *zap.Logger) error {
 	}
 
 	stop := func() error {
-		g.svr.GracefulStop()
+
+		stopped := make(chan struct{})
+		go func() {
+			g.svr.GracefulStop()
+			close(stopped)
+		}()
+
+		tm := time.NewTimer(g.closeTimeout)
+		select {
+		case <-tm.C:
+			l.Warn("closed by timeout")
+			g.svr.Stop()
+		case <-stopped:
+			tm.Stop()
+		}
+
 		return nil
 	}
 
