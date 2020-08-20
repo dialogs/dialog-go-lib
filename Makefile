@@ -74,7 +74,6 @@ proto:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	-e "GOFLAGS=" \
 	dialogs/go-tools-protoc:1.0.4 \
 	protoc \
 	-I=${$@_source} \
@@ -89,9 +88,13 @@ lint:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	-e "GOFLAGS=" \
 	dialogs/go-tools-linter:1.0.2 \
-	golangci-lint run ./... --exclude "is deprecated"
+	golangci-lint run ./... \
+	--exclude "is deprecated" \
+	--color=always \
+	--concurrency=3 \
+	--timeout 3m \
+	-v
 
 .PHONY: testall
 testall:
@@ -110,3 +113,13 @@ $(TEST_TARGETS):
     -coverprofile $(TEST_OUT_DIR)/$($@_filename)_cover.out \
     >> $(TEST_OUT_DIR)/$($@_filename).out \
    || ( echo 'fail $($@_package)' && cat $(TEST_OUT_DIR)/$($@_filename).out; exit 1);
+
+.PHONY: test-env-run
+test-env-run: test-env-stop
+	docker-compose -f docker-compose.yaml up -d
+	# todo add ping
+
+.PHONY: test-env-stop
+test-env-stop:
+	docker-compose -f docker-compose.yaml down
+	docker-compose -f docker-compose.yaml rm -fsv
