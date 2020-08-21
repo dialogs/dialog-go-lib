@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/big"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -528,37 +526,17 @@ func tempAddress(t *testing.T) (host, port string) {
 
 func newTLSCert(t *testing.T) (*tls.Certificate, *x509.Certificate) {
 
-	ca := cert.NewX509(
-		big.NewInt(rand.Int63()),
-		time.Now(), time.Now().AddDate(0, 0, 1),
-		nil,
-		cert.NewAttrs(
-			"localhost",
-			"email@mydomain.com",
-			[]string{"CA"},
-			[]string{"localhost"}))
-
-	ca.IPAddresses = []net.IP{net.IPv4(127, 0, 0, 1)}
-
-	privateKey, err := cert.NewRSA(1024)
+	der, key, err := cert.NewTestCert(1024, func(ca *x509.Certificate) {
+		ca.NotBefore = time.Now()
+		ca.NotAfter = time.Now().AddDate(0, 0, 1)
+		ca.IPAddresses = []net.IP{net.IPv4(127, 0, 0, 1)}
+	}, cert.NewAttrs("localhost", "email@mydomain.com", []string{"CA"}, []string{"localhost"})...)
 	require.NoError(t, err)
 
-	derBytes, err := cert.X509ToDerBytes(ca, ca, privateKey)
+	tlsCert, x509Cert, err := cert.NewServerClientCerts(der, key, "123456")
 	require.NoError(t, err)
 
-	const CertPassword = "123456"
-
-	p12, err := cert.X509ToP12(derBytes, privateKey, CertPassword)
-	require.NoError(t, err)
-
-	tlsCert, err := cert.P12ToTLS(p12, CertPassword)
-	require.NoError(t, err)
-
-	pem := cert.DerToPem(derBytes)
-	clientCert, err := cert.PemToX509(pem)
-	require.NoError(t, err)
-
-	return tlsCert, clientCert
+	return tlsCert, x509Cert
 }
 
 func getHTTPResponseBody(t *testing.T, resp *http.Response) string {

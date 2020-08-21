@@ -79,38 +79,28 @@ func TestCert(t *testing.T) {
 
 func TestGRPC(t *testing.T) {
 
-	host := "localhost"
-	attrs := NewAttrs(
-		host,
-		"email@"+host,
-		[]string{"CA", "CA_Users"},
-		nil,
-	)
+	const Host = "localhost"
 
-	start := time.Now().In(time.UTC).Truncate(time.Second)
-	end := start.AddDate(0, 0, 1)
-
-	ca := NewX509(big.NewInt(rand.Int63()), start, end, []string{host}, attrs)
-
-	privateKey, err := NewRSA(1024)
+	der, key, err := NewTestCert(1024, func(ca *x509.Certificate) {
+		ca.NotBefore = time.Now().In(time.UTC).Truncate(time.Second)
+		ca.NotAfter = ca.NotBefore.AddDate(0, 0, 1)
+		ca.DNSNames = []string{Host}
+	}, NewAttrs(Host, "email@"+Host, []string{"CA", "CA_Users"}, nil)...)
 	require.NoError(t, err)
 
-	servDerBytes, err := X509ToDerBytes(ca, ca, privateKey)
-	require.NoError(t, err)
-
-	servCertPEMBlock := DerToPem(servDerBytes)
-	certificate, err := tls.X509KeyPair(servCertPEMBlock, RsaToPem(privateKey))
+	servCertPemBlock := DerToPem(der)
+	certificate, err := tls.X509KeyPair(servCertPemBlock, RsaToPem(key))
 	require.NoError(t, err)
 
 	creds := credentials.NewTLS(&tls.Config{
-		ServerName:   host,
+		ServerName:   Host,
 		Certificates: []tls.Certificate{certificate},
 	})
 
 	grpcSvr := service.NewGRPC(grpc.Creds(creds))
 
 	_, p := tempAddress(t)
-	address := host + ":" + p
+	address := net.JoinHostPort(Host, p)
 
 	wgClose := sync.WaitGroup{}
 	wgClose.Add(1)
@@ -126,7 +116,7 @@ func TestGRPC(t *testing.T) {
 	}()
 
 	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(servCertPEMBlock)
+	pool.AppendCertsFromPEM(servCertPemBlock)
 
 	opts := []grpc.DialOption{
 		grpc.WithBlock(),
@@ -138,7 +128,6 @@ func TestGRPC(t *testing.T) {
 }
 
 func tempAddress(t *testing.T) (host, port string) {
-	t.Helper()
 
 	l, err := net.Listen("tcp", "0.0.0.0:0")
 	require.NoError(t, err)
