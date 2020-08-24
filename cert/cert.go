@@ -154,6 +154,17 @@ func DerToPem(der []byte) []byte {
 	})
 }
 
+func DerToX509(der []byte) (*x509.Certificate, error) {
+
+	pem := DerToPem(der)
+	c, err := PemToX509(pem)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "failed to convert pem to x509")
+	}
+
+	return c, nil
+}
+
 // PemToX509 returns x509 certificate from pem
 func PemToX509(certPEM []byte) (*x509.Certificate, error) {
 
@@ -214,4 +225,19 @@ func P12ToTLS(p12 []byte, password string) (*tls.Certificate, error) {
 	}
 
 	return &tlsKey, nil
+}
+
+func NewTLS(der []byte, key *rsa.PrivateKey, password string) (*tls.Certificate, error) {
+
+	p12, err := X509ToP12(der, key, password)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "failed to convert x509 to p12")
+	}
+
+	c, err := P12ToTLS(p12, password)
+	if err != nil {
+		return nil, pkgerr.Wrap(err, "failed to convert p12 to tls")
+	}
+
+	return c, nil
 }
