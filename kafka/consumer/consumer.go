@@ -131,12 +131,6 @@ func (c *Consumer) Start() error {
 	defer c.wg.Done()
 
 	c.logger.Info("start")
-	defer func() {
-		if err := recover(); err != nil {
-			c.logger.Error("panic:" + fmt.Sprintln(err))
-		}
-	}()
-
 	select {
 	case <-c.ctx.Done():
 		// protection for error of double closing: 'fatal error: unexpected signal during runtime execution'
