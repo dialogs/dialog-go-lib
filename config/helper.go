@@ -70,7 +70,7 @@ func NewCobraInitializer(cfgFile *string) func() {
 
 		// Use config file from the flag.
 		viper.SetConfigFile(*cfgFile)
-		viper.SetEnvKeyReplacer(strings.NewReplacer(",", "_"))
+		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 		viper.AutomaticEnv() // read in environment variables that match
 
 		// If a config file is found, read it in.
