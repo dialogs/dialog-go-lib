@@ -20,6 +20,23 @@ type RequestInfo struct {
 	Logger      *zap.Logger
 }
 
+func (ri *RequestInfo) GetChildSpan(name string) opentracing.Span {
+	return opentracing.StartSpan(name, opentracing.ChildOf(ri.Span.Context()))
+}
+
+func (ri *RequestInfo) WithSpan(span opentracing.Span) *RequestInfo {
+	return &RequestInfo{
+		RequestID:   ri.RequestID,
+		TokenHash:   ri.TokenHash,
+		Metadata:    ri.Metadata,
+		RequestName: ri.RequestName,
+		UserID:      ri.UserID,
+		Span:        span,
+		Context:     ri.Context,
+		Logger:      ri.Logger,
+	}
+}
+
 type RequestInfoError struct {
 	underlying error
 }
