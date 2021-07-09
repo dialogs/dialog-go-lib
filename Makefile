@@ -20,7 +20,7 @@ static:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-embedded:1.0.2 \
+	dialogs/go-tools-embedded:latest \
 	sh -c '\
 	rm -fv db/migrations/test/esc/static.go && \
 	go generate ${PROJECT}/db/migrations/test/esc'
@@ -30,7 +30,7 @@ static:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-embedded:1.0.2 \
+	dialogs/go-tools-embedded:latest \
 	sh -c '\
 	(cd db/migrations/test/assets/; \
 	 rm -fv ../gobindata/migrations.go; \
@@ -48,7 +48,7 @@ mock:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-mock:1.0.2 \
+	dialogs/go-tools-mock:latest \
 	sh -c 'mockery -name=IReader -dir=${$@_source} -recursive=false -output=$($@_target) && \
 	mockery -name=IWriter -dir=${$@_source} -recursive=false -output=$($@_target)'
 
@@ -58,7 +58,7 @@ easyjson:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-easyjson:1.0.2 \
+	dialogs/go-tools-easyjson:latest \
 	sh -c 'rm -rfv kafka/schemaregistry/*_easyjson.go && \
 	easyjson -all kafka/schemaregistry/request.go && \
 	easyjson -all kafka/schemaregistry/response.go'
@@ -74,7 +74,7 @@ proto:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-protoc:1.0.4 \
+	dialogs/go-tools-protoc:latest \
 	protoc \
 	-I=${$@_source} \
 	--gogofaster_out=plugins=grpc,\
@@ -88,7 +88,7 @@ lint:
 	-v "$(shell pwd):/go/src/${PROJECT}" \
 	-v "${GOPATH}/pkg:/go/pkg" \
 	-w "/go/src/${PROJECT}" \
-	dialogs/go-tools-linter:1.0.2 \
+	dialogs/go-tools-linter:latest \
 	golangci-lint run ./... \
 	--exclude "is deprecated" \
 	--color=always \
