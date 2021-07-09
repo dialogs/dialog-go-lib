@@ -11,6 +11,8 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/jackc/pgx/v4 v4.6.0
 	github.com/mailru/easyjson v0.7.1
+	github.com/markphelps/optional v0.9.0
+	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.6.0
 	github.com/segmentio/kafka-go v0.2.2
