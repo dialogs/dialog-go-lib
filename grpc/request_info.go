@@ -9,31 +9,41 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-type RequestInfo struct {
+type CommonRequestInfo struct {
 	RequestID   string
-	TokenHash   string
 	Metadata    metadata.MD
 	RequestName string
-	UserID      optional.String
 	Span        opentracing.Span
 	Context     context.Context
 	Logger      *zap.Logger
 }
 
-func (ri *RequestInfo) GetChildSpan(name string) opentracing.Span {
+type PublicRequestInfo struct {
+	CommonRequestInfo
+	TokenHash string
+	UserID    optional.String
+}
+
+func (ri *CommonRequestInfo) GetChildSpan(name string) opentracing.Span {
 	return opentracing.StartSpan(name, opentracing.ChildOf(ri.Span.Context()))
 }
 
-func (ri *RequestInfo) WithSpan(span opentracing.Span) *RequestInfo {
-	return &RequestInfo{
+func (ri *CommonRequestInfo) WithSpan(span opentracing.Span) *CommonRequestInfo {
+	return &CommonRequestInfo{
 		RequestID:   ri.RequestID,
-		TokenHash:   ri.TokenHash,
 		Metadata:    ri.Metadata,
 		RequestName: ri.RequestName,
-		UserID:      ri.UserID,
 		Span:        span,
 		Context:     ri.Context,
 		Logger:      ri.Logger,
+	}
+}
+
+func (ri *PublicRequestInfo) WithSpan(span opentracing.Span) *PublicRequestInfo {
+	return &PublicRequestInfo{
+		CommonRequestInfo: *ri.CommonRequestInfo.WithSpan(span),
+		TokenHash:         ri.TokenHash,
+		UserID:            ri.UserID,
 	}
 }
 
@@ -53,7 +63,7 @@ func getFromMetadata(md metadata.MD, key string) (string, error) {
 	return vals[0], nil
 }
 
-func GetRequestInfo(ctx context.Context, requestName string, log *zap.Logger) (*RequestInfo, error) {
+func GetCommonRequestInfo(ctx context.Context, requestName string, log *zap.Logger) (*CommonRequestInfo, error) {
 	var err error
 
 	md, found := metadata.FromIncomingContext(ctx)
@@ -61,19 +71,30 @@ func GetRequestInfo(ctx context.Context, requestName string, log *zap.Logger) (*
 		return nil, ErrInvalidRequest
 	}
 	zapReq := zap.String("method", requestName)
-	ri := &RequestInfo{}
+	ri := &CommonRequestInfo{}
 	ri.Metadata = md
 	if ri.RequestID, err = getFromMetadata(md, "x-request-id"); err != nil {
 		log.Error("no x-request-id found", zapReq)
 		return nil, ErrInvalidRequest
 	}
 	ri.Logger = log.With(zapReq, zap.String("request_id", ri.RequestID))
+	ri.RequestName = requestName
+	ri.Span, ri.Context = opentracing.StartSpanFromContext(ctx, requestName)
+	return ri, nil
+}
 
-	if ri.TokenHash, err = getFromMetadata(md, "x-auth-ticket"); err != nil {
+func GetPublicRequestInfo(ctx context.Context, requestName string, log *zap.Logger) (*PublicRequestInfo, error) {
+	ci, err := GetCommonRequestInfo(ctx, requestName, log)
+	if err != nil {
+		return nil, err
+	}
+	ri := &PublicRequestInfo{CommonRequestInfo: *ci}
+
+	if ri.TokenHash, err = getFromMetadata(ci.Metadata, "x-auth-ticket"); err != nil {
 		ri.Logger.Error("no x-auth-ticket found")
 		return nil, ErrUnauthenticated
 	}
-	if v, no := getFromMetadata(md, "x-user-id"); no == nil {
+	if v, no := getFromMetadata(ci.Metadata, "x-user-id"); no == nil {
 		ri.UserID = optional.NewString(v)
 	}
 	ri.RequestName = requestName
