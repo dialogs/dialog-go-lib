@@ -13,4 +13,5 @@ var (
 	ErrUnimplemented    = status.Error(codes.Unimplemented, "unimplemented")
 	ErrPermissionDenied = status.Error(codes.PermissionDenied, "forbidden")
 	ErrForbidden        = status.Error(codes.PermissionDenied, "forbidden")
+	ErrNotFound.        = status.Error(codes.NotFound, "entity not found")
 )
